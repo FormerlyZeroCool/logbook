@@ -1,0 +1,3 @@
+refresh_catalog:
+  name: Refresh catalog
+  description: Immediately reload active event types, aliases, and compatible units from the Logbook backend.

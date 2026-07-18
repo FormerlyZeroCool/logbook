@@ -1,0 +1,11 @@
+"""Constants for the Logbook integration."""
+
+DOMAIN = "logbook"
+CONF_API_KEY = "api_key"
+CONF_REFRESH_INTERVAL = "refresh_interval"
+DEFAULT_REFRESH_INTERVAL = 60
+MIN_REFRESH_INTERVAL = 15
+MAX_REFRESH_INTERVAL = 3600
+SERVICE_REFRESH_CATALOG = "refresh_catalog"
+INTEGRATION_VERSION = "0.1.0"
+REQUIRED_API_VERSION = "1"

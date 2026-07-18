@@ -1,0 +1,881 @@
+openapi: 3.1.0
+info:
+  title: Home Logbook API
+  version: 0.11.0
+servers:
+- url: http://192.168.68.62:8787/api/v1
+security:
+- bearerAuth: []
+paths:
+  /capabilities:
+    get:
+      summary: Describe backend API capabilities
+      responses:
+        '200':
+          description: Version and supported feature flags
+  /voice-catalog:
+    get:
+      summary: Return the active voice catalog
+      description: Returns active event types, voice aliases, default units, and all compatible units for dynamic
+        assistant tools.
+      responses:
+        '200':
+          description: Voice-ready event type and unit catalog
+  /unit-types:
+    get:
+      summary: List unit types and units
+      responses:
+        '200':
+          description: Unit catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - unitTypes
+                properties:
+                  unitTypes:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UnitType'
+    post:
+      summary: Create a unit type and its canonical base unit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitTypeCreate'
+      responses:
+        '201':
+          description: Created
+        '409':
+          description: Duplicate key
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /unit-types/{key}:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get one unit type
+      responses:
+        '200':
+          description: Unit type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnitType'
+        '404':
+          description: Unknown unit type
+    patch:
+      summary: Rename or describe a unit type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type:
+                  - string
+                  - 'null'
+      responses:
+        '200':
+          description: Updated
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      summary: Delete an entirely unused unit type
+      responses:
+        '204':
+          description: Deleted
+        '409':
+          description: Referenced by an event type or event
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /unit-types/{key}/units:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Add a unit with conversion back to the base unit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitCreate'
+      responses:
+        '201':
+          description: Added
+        '409':
+          description: Duplicate unit key
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /unit-types/{key}/units/{unitKey}:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    - in: path
+      name: unitKey
+      required: true
+      schema:
+        type: string
+    patch:
+      summary: Update a unit
+      description: Conversion factors are immutable after the unit is used.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitUpdate'
+      responses:
+        '200':
+          description: Updated
+        '409':
+          description: Base or used conversion is locked
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      summary: Delete an unused non-base unit
+      responses:
+        '204':
+          description: Deleted
+        '409':
+          description: Base or referenced unit
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /event-types:
+    get:
+      summary: List event types with recent events
+      parameters:
+      - in: query
+        name: recentLimit
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 5
+      - in: query
+        name: includeInactive
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: Event type summaries
+    post:
+      summary: Create an event type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventTypeCreate'
+      responses:
+        '201':
+          description: Created
+        '400':
+          description: Invalid unit selection
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /event-types/{key}:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get one event type
+      responses:
+        '200':
+          description: Event type
+    patch:
+      summary: Update or archive an event type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventTypeUpdate'
+      responses:
+        '200':
+          description: Updated
+        '409':
+          description: Historical numeric data locks the measurement dimension
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      summary: Delete an unused event type
+      responses:
+        '204':
+          description: Deleted
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /event-types/{key}/latest-event:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Get the most recent event for an event type
+      description: Uses the event type key and returns the newest event ordered by startedAt, then id.
+      responses:
+        '200':
+          description: Most recent event
+        '404':
+          description: Unknown event type or no recorded events
+    patch:
+      summary: Update the most recent event for an event type
+      description: Updates only supplied start-time, value, unit, text-value, note, or metadata fields. Numeric
+        values are validated and normalized by the backend. For point events, changing startedAt also changes endedAt
+        to the same timestamp. For duration events, the existing end time is preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LatestEventUpdate'
+      responses:
+        '200':
+          description: Updated most recent event
+        '400':
+          description: Invalid value
+          unit: null
+          or start time: null
+        '404':
+          description: Unknown event type or no recorded events
+        '409':
+          description: The selected latest event changed concurrently
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /events:
+    get:
+      summary: List and search events
+      description: Returns events in reverse chronological order with numbered pagination. The note filter performs
+        a case-insensitive substring search. It currently uses a plain case-insensitive substring scan; a trigram
+        index can be added later without changing this API contract.
+      parameters:
+      - in: query
+        name: eventTypeId
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: eventTypeKey
+        schema:
+          type: string
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: before
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: ongoing
+        schema:
+          type: boolean
+      - in: query
+        name: note
+        description: Case-insensitive text contained in the event note.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 500
+      - in: query
+        name: page
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - in: query
+        name: pageSize
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 100
+      - in: query
+        name: limit
+        deprecated: true
+        description: Legacy alias for pageSize; cannot be combined with pageSize.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+      responses:
+        '200':
+          description: Paginated events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEvents'
+        '400':
+          description: Invalid filters or pagination values
+  /events/log:
+    post:
+      summary: Log a point-in-time event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PointEventLog'
+      responses:
+        '201':
+          description: Logged point event
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /events/start:
+    post:
+      summary: Start a duration event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DurationEventStart'
+      responses:
+        '201':
+          description: Started duration event
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /events/end:
+    post:
+      summary: End one ongoing duration event
+      description: Supply an eventId, or an eventTypeId/eventTypeKey to end the newest ongoing duration for that
+        type. Optionally supply value and unitKey to set or replace the event's numeric value as part of the same
+        completion operation. Numeric values are normalized by the backend; omitting value preserves the existing
+        value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventEnd'
+      responses:
+        '200':
+          description: Ended event
+        '400':
+          description: endedAt is earlier than the event start
+        '404':
+          description: Event
+          event type: null
+          or ongoing event not found: null
+        '409':
+          description: Event is a point event
+          already ended: null
+          or was ended concurrently: null
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /events/{id}:
+    parameters:
+    - in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: Get an event
+      responses:
+        '200':
+          description: Event
+    patch:
+      summary: Edit an individual event
+      description: Updates value/unit, text value, note, start time, or end time. Numeric values are normalized
+        by the backend. Point events must retain identical start and end times. Set endedAt to null to make a duration
+        event ongoing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventUpdate'
+      responses:
+        '200':
+          description: Updated event
+        '400':
+          description: Invalid value
+          unit: null
+          or timestamp shape: null
+        '404':
+          description: Event not found
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+    delete:
+      summary: Delete an event
+      responses:
+        '204':
+          description: Deleted
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+  /event-types/{key}/series:
+    parameters:
+    - in: path
+      name: key
+      required: true
+      schema:
+        type: string
+    get:
+      summary: Return converted values, durations, and per-event hover details
+      parameters:
+      - in: query
+        name: from
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: bucket
+        schema:
+          type: string
+          default: 1 hour
+      - in: query
+        name: displayUnitKey
+        schema:
+          type: string
+        description: Exact compatible unit key. Defaults to the event type default.
+      - in: query
+        name: timeZone
+        description: IANA timezone used to align day and week buckets to local calendar boundaries.
+        schema:
+          type: string
+          default: UTC
+          examples:
+          - America/New_York
+      responses:
+        '200':
+          description: Bucket aggregates plus raw event points with value
+          text: null
+          note: null
+          and duration details: null
+        '400':
+          description: Incompatible display unit
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Unit:
+      type: object
+      required:
+      - id
+      - key
+      - name
+      - symbol
+      - scaleToBase
+      - offsetToBase
+      - isBase
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        scaleToBase:
+          type: number
+          exclusiveMinimum: 0
+        offsetToBase:
+          type: number
+        aliases:
+          type: array
+          items:
+            type: string
+        isBase:
+          type: boolean
+        eventCount:
+          type: integer
+        defaultEventTypeCount:
+          type: integer
+    BaseUnitCreate:
+      type: object
+      required:
+      - key
+      - name
+      - symbol
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+    UnitTypeCreate:
+      type: object
+      required:
+      - key
+      - name
+      - baseUnit
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type:
+          - string
+          - 'null'
+        baseUnit:
+          $ref: '#/components/schemas/BaseUnitCreate'
+    UnitCreate:
+      type: object
+      required:
+      - key
+      - name
+      - symbol
+      - scaleToBase
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        symbol:
+          type: string
+        scaleToBase:
+          type: number
+          exclusiveMinimum: 0
+        offsetToBase:
+          type: number
+          default: 0
+        aliases:
+          type: array
+          items:
+            type: string
+    UnitUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        symbol:
+          type: string
+        scaleToBase:
+          type: number
+          exclusiveMinimum: 0
+        offsetToBase:
+          type: number
+        aliases:
+          type: array
+          items:
+            type: string
+    UnitType:
+      type: object
+      required:
+      - id
+      - key
+      - name
+      - units
+      - eventTypeCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type:
+          - string
+          - 'null'
+        baseUnit:
+          oneOf:
+          - $ref: '#/components/schemas/Unit'
+          - type: 'null'
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/Unit'
+        eventTypeCount:
+          type: integer
+    EventTypeCreate:
+      type: object
+      required:
+      - key
+      - name
+      properties:
+        key:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+        name:
+          type: string
+        description:
+          type:
+          - string
+          - 'null'
+        unitTypeKey:
+          type:
+          - string
+          - 'null'
+          examples:
+          - energy
+        defaultUnitKey:
+          type:
+          - string
+          - 'null'
+          examples:
+          - kwh
+        icon:
+          type:
+          - string
+          - 'null'
+        color:
+          type:
+          - string
+          - 'null'
+          pattern: ^#[0-9A-Fa-f]{6}$
+        voiceAliases:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+    EventTypeUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type:
+          - string
+          - 'null'
+        unitTypeKey:
+          type:
+          - string
+          - 'null'
+        defaultUnitKey:
+          type:
+          - string
+          - 'null'
+        icon:
+          type:
+          - string
+          - 'null'
+        color:
+          type:
+          - string
+          - 'null'
+        isActive:
+          type: boolean
+        voiceAliases:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+            minLength: 1
+            maxLength: 120
+    EventValue:
+      type: object
+      properties:
+        value:
+          type:
+          - number
+          - 'null'
+          description: Original input value
+        unitKey:
+          type:
+          - string
+          - 'null'
+          description: Exact compatible input unit
+        textValue:
+          type:
+          - string
+          - 'null'
+        note:
+          type:
+          - string
+          - 'null'
+        metadata:
+          type: object
+          additionalProperties: true
+    LatestEventUpdate:
+      allOf:
+      - type: object
+        properties:
+          startedAt:
+            type: string
+            format: date-time
+      - $ref: '#/components/schemas/EventValue'
+      minProperties: 1
+      description: Supply at least one editable field. unitKey may only be supplied with a numeric value. Changing
+        a point event's startedAt moves its endedAt to the same instant; a duration event keeps its current endedAt.
+    PointEventLog:
+      allOf:
+      - type: object
+        properties:
+          eventTypeId:
+            type: string
+            format: uuid
+          eventTypeKey:
+            type: string
+          occurredAt:
+            type: string
+            format: date-time
+      - $ref: '#/components/schemas/EventValue'
+    DurationEventStart:
+      allOf:
+      - type: object
+        properties:
+          eventTypeId:
+            type: string
+            format: uuid
+          eventTypeKey:
+            type: string
+          startedAt:
+            type: string
+            format: date-time
+      - $ref: '#/components/schemas/EventValue'
+    EventUpdate:
+      type: object
+      minProperties: 1
+      properties:
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        value:
+          type:
+          - number
+          - 'null'
+        unitKey:
+          type:
+          - string
+          - 'null'
+        textValue:
+          type:
+          - string
+          - 'null'
+          maxLength: 4000
+        note:
+          type:
+          - string
+          - 'null'
+          maxLength: 4000
+        metadata:
+          type: object
+          additionalProperties: true
+    EventPagination:
+      type: object
+      required:
+      - page
+      - pageSize
+      - total
+      - totalPages
+      - hasPrevious
+      - hasNext
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 1
+        hasPrevious:
+          type: boolean
+        hasNext:
+          type: boolean
+    PaginatedEvents:
+      type: object
+      required:
+      - events
+      - pagination
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+        pagination:
+          $ref: '#/components/schemas/EventPagination'
+    EventEnd:
+      type: object
+      description: Provide exactly one of eventId, eventTypeId, or eventTypeKey.
+      oneOf:
+      - required:
+        - eventId
+      - required:
+        - eventTypeId
+      - required:
+        - eventTypeKey
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventTypeId:
+          type: string
+          format: uuid
+        eventTypeKey:
+          type: string
+        endedAt:
+          type: string
+          format: date-time
+        value:
+          type:
+          - number
+          - 'null'
+          description: Optional original input value to store while ending
+        unitKey:
+          type:
+          - string
+          - 'null'
+          description: Optional compatible unit; requires value
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: false
+      description: Optional unique key for safely retrying POST, PATCH, and DELETE requests. Reusing a key with
+        the same request returns the stored response; reusing it with a different request returns 409.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200

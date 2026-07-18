@@ -1,0 +1,217 @@
+# Merge these entries beneath `rest_command:` in configuration.yaml.
+# In secrets.yaml set:
+# logbook_authorization_header: "Bearer YOUR_LONG_API_KEY"
+#
+# event_type_key and unit_key must be exact managed catalog keys. unit_key is
+# optional; when omitted, the event type's default unit is used. Examples:
+# mass: g, kg, mg, oz, lb
+# volume: ml, l, tsp_us, tbsp_us, fl_oz_us, cup_us
+# quantity: count, dozen
+# energy: mwh, wh, kwh, j, kj
+# power: mw, w, kw, megawatt, hp_mechanical
+
+logbook_log_point_event:
+  url: "http://192.168.68.62:8787/api/v1/events/log"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {{ {
+      "eventTypeKey": event_type_key,
+      "occurredAt": occurred_at | default(now().isoformat()),
+      "value": (value | float) if value is defined and value is not none else none,
+      "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none,
+      "textValue": text_value | default(none),
+      "note": note | default(none),
+      "metadata": metadata | default({})
+    } | to_json }}
+
+logbook_start_duration_event:
+  url: "http://192.168.68.62:8787/api/v1/events/start"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {{ {
+      "eventTypeKey": event_type_key,
+      "startedAt": started_at | default(now().isoformat()),
+      "value": (value | float) if value is defined and value is not none else none,
+      "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none,
+      "textValue": text_value | default(none),
+      "note": note | default(none),
+      "metadata": metadata | default({})
+    } | to_json }}
+
+logbook_end_event:
+  url: "http://192.168.68.62:8787/api/v1/events/end"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {% if value is defined and value is not none and is_number(value) %}
+      {{ {
+        "eventTypeKey": event_type_key,
+        "endedAt": ended_at | default(now().isoformat()),
+        "value": value | float,
+        "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none
+      } | to_json }}
+    {% else %}
+      {{ {
+        "eventTypeKey": event_type_key,
+        "endedAt": ended_at | default(now().isoformat())
+      } | to_json }}
+    {% endif %}
+
+logbook_get_latest_event:
+  url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+  method: GET
+  headers:
+    authorization: !secret logbook_authorization_header
+    accept: application/json
+
+logbook_update_latest_event:
+  url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+  method: PATCH
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+    accept: application/json
+  payload: >-
+    {% set payload = {} %}
+    {% if started_at is defined and started_at is not none and started_at != '' %}
+      {% set payload = payload | combine({"startedAt": started_at}) %}
+    {% endif %}
+    {% if value is defined and value is not none and is_number(value) %}
+      {% set payload = payload | combine({"value": value | float}) %}
+      {% if unit_key is defined and unit_key is not none and unit_key != '' %}
+        {% set payload = payload | combine({"unitKey": unit_key}) %}
+      {% endif %}
+    {% endif %}
+    {% if text_value is defined and text_value is not none %}
+      {% set payload = payload | combine({"textValue": text_value}) %}
+    {% endif %}
+    {% if note is defined and note is not none %}
+      {% set payload = payload | combine({"note": note}) %}
+    {% endif %}
+    {{ payload | to_json }}
+
+# Catalog management commands. Expose the corresponding scripts only to a
+# trusted Assist pipeline because these calls modify what future logging accepts.
+logbook_create_event_type:
+  url: "http://192.168.68.62:8787/api/v1/event-types"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {{ {
+      "key": event_type_key,
+      "name": name,
+      "description": description | default(none),
+      "unitTypeKey": unit_type_key | default(none),
+      "defaultUnitKey": default_unit_key | default(none)
+    } | to_json }}
+
+logbook_update_event_type:
+  url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}"
+  method: PATCH
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {% set payload = {} %}
+    {% if name is defined and name is not none %}
+      {% set payload = payload | combine({"name": name}) %}
+    {% endif %}
+    {% if description is defined and description is not none %}
+      {% set payload = payload | combine({"description": description}) %}
+    {% endif %}
+    {% if unit_type_key is defined and unit_type_key is not none %}
+      {% set payload = payload | combine({"unitTypeKey": unit_type_key}) %}
+    {% endif %}
+    {% if default_unit_key is defined and default_unit_key is not none %}
+      {% set payload = payload | combine({"defaultUnitKey": default_unit_key}) %}
+    {% endif %}
+    {% if is_active is defined and is_active is not none %}
+      {% set payload = payload | combine({"isActive": is_active}) %}
+    {% endif %}
+    {{ payload | to_json }}
+
+logbook_create_unit_type:
+  url: "http://192.168.68.62:8787/api/v1/unit-types"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {{ {
+      "key": unit_type_key,
+      "name": name,
+      "description": description | default(none),
+      "baseUnit": {
+        "key": base_unit_key,
+        "name": base_unit_name,
+        "symbol": base_unit_symbol,
+        "aliases": base_unit_aliases | default([])
+      }
+    } | to_json }}
+
+logbook_add_unit:
+  url: "http://192.168.68.62:8787/api/v1/unit-types/{{ unit_type_key }}/units"
+  method: POST
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {{ {
+      "key": unit_key,
+      "name": name,
+      "symbol": symbol,
+      "scaleToBase": scale_to_base | float,
+      "offsetToBase": offset_to_base | default(0) | float,
+      "aliases": aliases | default([])
+    } | to_json }}
+
+logbook_update_unit:
+  url: "http://192.168.68.62:8787/api/v1/unit-types/{{ unit_type_key }}/units/{{ unit_key }}"
+  method: PATCH
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {% set payload = {} %}
+    {% if name is defined and name is not none %}
+      {% set payload = payload | combine({"name": name}) %}
+    {% endif %}
+    {% if symbol is defined and symbol is not none %}
+      {% set payload = payload | combine({"symbol": symbol}) %}
+    {% endif %}
+    {% if scale_to_base is defined and scale_to_base is not none and is_number(scale_to_base) %}
+      {% set payload = payload | combine({"scaleToBase": scale_to_base | float}) %}
+    {% endif %}
+    {% if offset_to_base is defined and offset_to_base is not none and is_number(offset_to_base) %}
+      {% set payload = payload | combine({"offsetToBase": offset_to_base | float}) %}
+    {% endif %}
+    {% if aliases is defined and aliases is not none %}
+      {% set payload = payload | combine({"aliases": aliases}) %}
+    {% endif %}
+    {{ payload | to_json }}
+
+logbook_update_unit_type:
+  url: "http://192.168.68.62:8787/api/v1/unit-types/{{ unit_type_key }}"
+  method: PATCH
+  headers:
+    authorization: !secret logbook_authorization_header
+    content-type: application/json
+  payload: >-
+    {% set payload = {} %}
+    {% if name is defined and name is not none %}
+      {% set payload = payload | combine({"name": name}) %}
+    {% endif %}
+    {% if description is defined and description is not none %}
+      {% set payload = payload | combine({"description": description}) %}
+    {% endif %}
+    {{ payload | to_json }}

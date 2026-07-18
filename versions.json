@@ -1,0 +1,7 @@
+{
+  "monorepo": "0.11.2",
+  "backend": "0.11.0",
+  "frontend": "0.13.3",
+  "home_assistant_integration": "0.1.1",
+  "legacy_home_assistant_yaml": "v6"
+}

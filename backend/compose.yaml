@@ -1,0 +1,38 @@
+services:
+  db:
+    image: timescale/timescaledb:2.28.2-pg18
+    container_name: logbook-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/18/docker
+    volumes:
+      - logbook-db-pg18:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    container_name: logbook-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      API_KEY: ${API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      HOST: 0.0.0.0
+      PORT: 8787
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8787}:8787"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  logbook-db-pg18:

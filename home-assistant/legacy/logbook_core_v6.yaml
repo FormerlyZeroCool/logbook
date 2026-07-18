@@ -1,0 +1,390 @@
+# Stable Home Assistant package for the Logbook service.
+# Install as: /config/packages/logbook.yaml
+# Required secret in /config/secrets.yaml:
+#   logbook_authorization_header: "Bearer YOUR_API_KEY"
+#
+# This package intentionally contains only the core voice tools. Event-type and
+# unit administration remain available in the Logbook frontend.
+
+rest_command:
+  logbook_list_event_types:
+    url: "http://192.168.68.62:8787/api/v1/event-types?includeInactive=false&recentLimit=1"
+    method: GET
+    headers:
+      authorization: !secret logbook_authorization_header
+      accept: application/json
+
+  logbook_log_point_event:
+    url: "http://192.168.68.62:8787/api/v1/events/log"
+    method: POST
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {{ {
+        "eventTypeKey": event_type_key,
+        "occurredAt": occurred_at | default(now().isoformat()),
+        "value": (value | float) if value is defined and value is not none and is_number(value) else none,
+        "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none,
+        "textValue": text_value | default(none),
+        "note": note | default(none)
+      } | to_json }}
+
+  logbook_start_duration_event:
+    url: "http://192.168.68.62:8787/api/v1/events/start"
+    method: POST
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {{ {
+        "eventTypeKey": event_type_key,
+        "startedAt": started_at | default(now().isoformat()),
+        "value": (value | float) if value is defined and value is not none and is_number(value) else none,
+        "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none,
+        "textValue": text_value | default(none),
+        "note": note | default(none)
+      } | to_json }}
+
+  logbook_finish_duration_event:
+    url: "http://192.168.68.62:8787/api/v1/events/end"
+    method: POST
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {% if value is defined and value is not none and is_number(value) %}
+        {{ {
+          "eventTypeKey": event_type_key,
+          "endedAt": ended_at | default(now().isoformat()),
+          "value": value | float,
+          "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none
+        } | to_json }}
+      {% else %}
+        {{ {
+          "eventTypeKey": event_type_key,
+          "endedAt": ended_at | default(now().isoformat())
+        } | to_json }}
+      {% endif %}
+
+  logbook_get_latest_event:
+    url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+    method: GET
+    headers:
+      authorization: !secret logbook_authorization_header
+      accept: application/json
+
+  logbook_update_latest_value:
+    url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+    method: PATCH
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {{ {
+        "value": value | float,
+        "unitKey": unit_key if unit_key is defined and unit_key is not none and unit_key != '' else none
+      } | to_json }}
+
+  logbook_update_latest_note:
+    url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+    method: PATCH
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {{ {
+        "note": note
+      } | to_json }}
+
+  logbook_update_latest_start_time:
+    url: "http://192.168.68.62:8787/api/v1/event-types/{{ event_type_key }}/latest-event"
+    method: PATCH
+    headers:
+      authorization: !secret logbook_authorization_header
+      content-type: application/json
+      accept: application/json
+    payload: >-
+      {{ {
+        "startedAt": started_at
+      } | to_json }}
+
+script:
+  logbook_list_event_types:
+    alias: List Logbook Event Types
+    description: >-
+      Return all active Logbook event types and their exact keys. Call this before
+      any other Logbook tool whenever the exact event type key is not already known.
+      Match the user's words against the returned key, name, description, unit type,
+      and default unit. Never invent a key. Ask the user when multiple types match.
+    mode: parallel
+    max: 20
+    sequence:
+      - action: rest_command.logbook_list_event_types
+        response_variable: logbook_response
+      - stop: Logbook event types retrieved
+        response_variable: logbook_response
+
+  logbook_log_event:
+    alias: Log Point Event
+    description: >-
+      Record a point-in-time event using an exact existing event type key. Use this
+      for observations such as weight, medication taken, water consumed, or a
+      measurement. Call List Logbook Event Types first when the key is unknown.
+      Pass an exact unit key when the user gives a unit.
+    mode: queued
+    max: 20
+    fields:
+      event_type_key:
+        name: Event type key
+        description: Exact existing event type key.
+        required: true
+      value:
+        name: Value
+        description: Optional numeric value.
+        required: false
+        selector:
+          number:
+            mode: box
+            step: any
+      unit_key:
+        name: Unit key
+        description: Optional exact unit key. Omit to use the event type default.
+        required: false
+      text_value:
+        name: Text value
+        description: Optional nonnumeric value.
+        required: false
+      note:
+        name: Note
+        description: Optional note.
+        required: false
+        selector:
+          text:
+            multiline: true
+    sequence:
+      - action: rest_command.logbook_log_point_event
+        data:
+          event_type_key: "{{ event_type_key }}"
+          occurred_at: "{{ now().isoformat() }}"
+          value: "{{ value | default(none) }}"
+          unit_key: "{{ unit_key | default(none) }}"
+          text_value: "{{ text_value | default(none) }}"
+          note: "{{ note | default(none) }}"
+        response_variable: logbook_response
+      - stop: Point event request completed
+        response_variable: logbook_response
+
+  logbook_start_event:
+    alias: Start Duration Event
+    description: >-
+      Start an ongoing duration event using an exact existing event type key. Use
+      this for activities such as a walk, workout, feeding, sleep, or charging.
+      Call List Logbook Event Types first when the key is unknown.
+    mode: queued
+    max: 20
+    fields:
+      event_type_key:
+        name: Event type key
+        description: Exact existing event type key.
+        required: true
+      value:
+        name: Value
+        description: Optional numeric value associated with the activity.
+        required: false
+        selector:
+          number:
+            mode: box
+            step: any
+      unit_key:
+        name: Unit key
+        description: Optional exact unit key.
+        required: false
+      text_value:
+        name: Text value
+        description: Optional nonnumeric value.
+        required: false
+      note:
+        name: Note
+        description: Optional note.
+        required: false
+        selector:
+          text:
+            multiline: true
+    sequence:
+      - action: rest_command.logbook_start_duration_event
+        data:
+          event_type_key: "{{ event_type_key }}"
+          started_at: "{{ now().isoformat() }}"
+          value: "{{ value | default(none) }}"
+          unit_key: "{{ unit_key | default(none) }}"
+          text_value: "{{ text_value | default(none) }}"
+          note: "{{ note | default(none) }}"
+        response_variable: logbook_response
+      - stop: Duration event start request completed
+        response_variable: logbook_response
+
+  logbook_finish_event:
+    alias: Finish Duration Event
+    description: >-
+      Finish the newest ongoing duration event for an exact existing event type
+      key. Call List Logbook Event Types first when the key is unknown. Do not use
+      this for a point event. When the user gives a final numeric amount, pass it
+      as value and pass its exact unit key when supplied; otherwise omit both so
+      the event's existing value is preserved.
+    mode: queued
+    max: 20
+    fields:
+      event_type_key:
+        name: Event type key
+        description: Exact existing event type key.
+        required: true
+      value:
+        name: Final value
+        description: Optional numeric value to store while finishing the event.
+        required: false
+        selector:
+          number:
+            mode: box
+            step: any
+      unit_key:
+        name: Unit key
+        description: >-
+          Optional exact unit key for the final value. Only pass this with value;
+          omit it to use the event type's default unit.
+        required: false
+    sequence:
+      - action: rest_command.logbook_finish_duration_event
+        data:
+          event_type_key: "{{ event_type_key }}"
+          ended_at: "{{ now().isoformat() }}"
+          value: "{{ value | default(none) }}"
+          unit_key: "{{ unit_key | default(none) }}"
+        response_variable: logbook_response
+      - stop: Duration event finish request completed
+        response_variable: logbook_response
+
+  logbook_get_latest_event:
+    alias: Get Latest Logbook Event
+    description: >-
+      Return the newest event for an exact existing event type key. Use this when
+      the user asks when the latest event started or ended, whether it is ongoing,
+      its value, or its notes. Call List Logbook Event Types first when the key is
+      unknown. Read the exact fields from the returned content and relay them.
+    mode: parallel
+    max: 20
+    fields:
+      event_type_key:
+        name: Event type key
+        description: Exact existing event type key.
+        required: true
+    sequence:
+      - action: rest_command.logbook_get_latest_event
+        data:
+          event_type_key: "{{ event_type_key }}"
+        response_variable: logbook_response
+      - stop: Latest Logbook event retrieved
+        response_variable: logbook_response
+
+  logbook_update_latest_event:
+    alias: Update Latest Logbook Event
+    description: >-
+      Update the numeric value, note, or start time of the newest event for an
+      exact existing event type key. Set operation to value, note, or start_time.
+      To change more than one field, call this tool once per field. Call List
+      Logbook Event Types first when the key is unknown. For a point event,
+      changing the start also moves its end to the same instant. For a duration
+      event, the existing end is preserved.
+    mode: queued
+    max: 20
+    fields:
+      event_type_key:
+        name: Event type key
+        description: Exact existing event type key.
+        required: true
+      operation:
+        name: Operation
+        description: Choose value, note, or start_time.
+        required: true
+        selector:
+          select:
+            options:
+              - value
+              - note
+              - start_time
+      value:
+        name: Corrected value
+        description: Required when operation is value.
+        required: false
+        selector:
+          number:
+            mode: box
+            step: any
+      unit_key:
+        name: Unit key
+        description: Optional exact unit key for the corrected value.
+        required: false
+      note:
+        name: Replacement note
+        description: Required when operation is note. Use an empty string to clear it.
+        required: false
+        selector:
+          text:
+            multiline: true
+      started_at:
+        name: Corrected start time
+        description: >-
+          Required when operation is start_time. Pass an ISO 8601 timestamp with
+          a timezone offset, such as 2026-07-15T18:15:00-04:00. Resolve relative
+          phrases such as "20 minutes ago" before calling this tool.
+        required: false
+        selector:
+          text:
+    sequence:
+      - choose:
+          - conditions: "{{ operation == 'value' and value is defined and value is not none and is_number(value) }}"
+            sequence:
+              - action: rest_command.logbook_update_latest_value
+                data:
+                  event_type_key: "{{ event_type_key }}"
+                  value: "{{ value }}"
+                  unit_key: "{{ unit_key | default(none) }}"
+                response_variable: logbook_response
+              - stop: Latest Logbook value update completed
+                response_variable: logbook_response
+          - conditions: "{{ operation == 'note' and note is defined and note is not none }}"
+            sequence:
+              - action: rest_command.logbook_update_latest_note
+                data:
+                  event_type_key: "{{ event_type_key }}"
+                  note: "{{ note }}"
+                response_variable: logbook_response
+              - stop: Latest Logbook note update completed
+                response_variable: logbook_response
+          - conditions: "{{ operation == 'start_time' and started_at is defined and started_at is not none and started_at != '' }}"
+            sequence:
+              - action: rest_command.logbook_update_latest_start_time
+                data:
+                  event_type_key: "{{ event_type_key }}"
+                  started_at: "{{ started_at }}"
+                response_variable: logbook_response
+              - stop: Latest Logbook start-time update completed
+                response_variable: logbook_response
+        default:
+          - variables:
+              invalid_operation_response:
+                status: 400
+                content:
+                  error: invalid_operation
+                  message: >-
+                    Operation must be value with a numeric value, note with
+                    replacement text, or start_time with an ISO 8601 timestamp.
+          - stop: Invalid latest-event update operation
+            response_variable: invalid_operation_response
+
+# package_version: logbook_core_v6_2026-07-15

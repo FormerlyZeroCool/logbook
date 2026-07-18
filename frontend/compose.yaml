@@ -1,0 +1,10 @@
+services:
+  frontend:
+    build: .
+    container_name: logbook-dashboard
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: ${BACKEND_URL}
+      API_KEY: ${API_KEY}
+    ports:
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-8790}:8080"

@@ -1,0 +1,40 @@
+{
+  "title": "Logbook",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Logbook",
+        "description": "Connect Home Assistant to the local Logbook backend. Requires backend v0.11.0 or newer.",
+        "data": {
+          "url": "Backend URL",
+          "api_key": "API key",
+          "refresh_interval": "Catalog refresh interval (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate Logbook",
+        "description": "Enter the current Logbook API key.",
+        "data": {"api_key": "API key"}
+      },
+      "reconfigure": {
+        "title": "Reconfigure Logbook",
+        "data": {
+          "url": "Backend URL",
+          "api_key": "API key",
+          "refresh_interval": "Catalog refresh interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Unable to connect to the Logbook backend.",
+      "invalid_auth": "The API key was rejected.",
+      "invalid_url": "Enter a complete HTTP or HTTPS URL.",
+      "unsupported_backend": "The backend is missing features required by this integration."
+    },
+    "abort": {
+      "already_configured": "This Logbook backend is already configured.",
+      "reauth_successful": "The API key was updated successfully.",
+      "reconfigure_successful": "Logbook was reconfigured successfully."
+    }
+  }
+}

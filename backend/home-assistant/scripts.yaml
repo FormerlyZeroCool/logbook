@@ -1,0 +1,469 @@
+# Merge these entries beneath `script:` in configuration.yaml or import them
+# through the script editor's YAML mode. Expose the logging and read-only
+# query scripts you want available to Assist. Expose catalog-management scripts
+# only to a trusted Assist pipeline.
+#
+# The tools are deliberately separate so an LLM has unambiguous verbs:
+#   log    -> one point-in-time row with start == end and duration 0
+#   start  -> one ongoing duration row with end == null
+#   finish -> closes the latest ongoing duration row
+#   latest -> returns start, end/ongoing status, and note for the newest row
+#
+# Numeric values may include an exact unit_key. Common keys are:
+#   mass: g, kg, mg, oz, lb
+#   volume: ml, l, tsp_us, tbsp_us, fl_oz_us, cup_us
+#   quantity: count, dozen
+
+logbook_log_event:
+  alias: Log Point Event
+  description: >-
+    Log a point-in-time event now using an existing event type key. Use
+    this for statements such as "log my weight as 180 pounds", "record 12 fluid
+    ounces of water", or "I took my medication". Pass the exact unit key when
+    the user states a unit. Never invent an event type or unit key.
+  mode: queued
+  max: 20
+  fields:
+    event_type_key:
+      name: Event type key
+      description: Exact existing event type key such as weight, water, or medication.
+      required: true
+      selector:
+        text:
+    value:
+      name: Value
+      description: Optional numeric value for the observation.
+      required: false
+      selector:
+        number:
+          mode: box
+    unit_key:
+      name: Unit key
+      description: Optional exact unit key such as lb, kg, ml, fl_oz_us, count, or dozen. Omit it to use the event type default.
+      required: false
+      selector:
+        text:
+    text_value:
+      name: Text value
+      description: Optional text value when the observation is not numeric.
+      required: false
+      selector:
+        text:
+    note:
+      name: Note
+      description: Optional note.
+      required: false
+      selector:
+        text:
+  sequence:
+    - action: rest_command.logbook_log_point_event
+      data:
+        event_type_key: "{{ event_type_key }}"
+        occurred_at: "{{ now().isoformat() }}"
+        value: "{{ value | default(none) }}"
+        unit_key: "{{ unit_key | default(none) }}"
+        text_value: "{{ text_value | default(none) }}"
+        note: "{{ note | default(none) }}"
+      response_variable: logbook_response
+    - set_conversation_response: >-
+        Logged {{ event_type_key | replace('_', ' ') }}{% if value is defined %}
+        with value {{ value }}{% if unit_key is defined %} {{ unit_key }}{% endif %}{% endif %}.
+
+logbook_start_event:
+  alias: Start Duration Event
+  description: >-
+    Start a duration-based event now using an existing event type key.
+    Use for activities that will be ended later, such as "start a dog walk",
+    "start feeding with 8 fluid ounces", or "begin a workout". Pass the exact
+    unit key when the user states a numeric unit. Never invent catalog keys.
+  mode: queued
+  max: 20
+  fields:
+    event_type_key:
+      name: Event type key
+      description: Exact existing event type key such as dog_walk or workout.
+      required: true
+      selector:
+        text:
+    value:
+      name: Value
+      description: Optional numeric value associated with the activity.
+      required: false
+      selector:
+        number:
+          mode: box
+    unit_key:
+      name: Unit key
+      description: Optional exact unit key. Omit it to use the event type default.
+      required: false
+      selector:
+        text:
+    note:
+      name: Note
+      description: Optional note.
+      required: false
+      selector:
+        text:
+  sequence:
+    - action: rest_command.logbook_start_duration_event
+      data:
+        event_type_key: "{{ event_type_key }}"
+        started_at: "{{ now().isoformat() }}"
+        value: "{{ value | default(none) }}"
+        unit_key: "{{ unit_key | default(none) }}"
+        note: "{{ note | default(none) }}"
+      response_variable: logbook_response
+    - set_conversation_response: >-
+        Started {{ event_type_key | replace('_', ' ') }}{% if value is defined %}
+        with value {{ value }}{% if unit_key is defined %} {{ unit_key }}{% endif %}{% endif %}.
+
+logbook_finish_event:
+  alias: Finish Duration Event
+  description: >-
+    Finish the most recent ongoing duration event for an exact existing
+    event type key. Use for statements such as "finish the dog walk", "end my
+    workout", or "feeding is done". Do not use this for point events. When the
+    user supplies a final numeric amount, pass value and its exact unit key;
+    otherwise omit them so the existing event value is preserved.
+  mode: queued
+  max: 20
+  fields:
+    event_type_key:
+      name: Event type key
+      description: Exact existing event type key such as dog_walk or workout.
+      required: true
+      selector:
+        text:
+    value:
+      name: Final value
+      description: Optional numeric value to store while finishing the event.
+      required: false
+      selector:
+        number:
+          mode: box
+          step: any
+    unit_key:
+      name: Unit key
+      description: >-
+        Optional exact unit key for the final value. Only pass it with value;
+        omit it to use the event type default unit.
+      required: false
+      selector:
+        text:
+  sequence:
+    - action: rest_command.logbook_end_event
+      data:
+        event_type_key: "{{ event_type_key }}"
+        ended_at: "{{ now().isoformat() }}"
+        value: "{{ value | default(none) }}"
+        unit_key: "{{ unit_key | default(none) }}"
+      response_variable: logbook_response
+    - set_conversation_response: >-
+        Finished the latest {{ event_type_key | replace('_', ' ') }} event.
+
+logbook_get_latest_event:
+  alias: Get Latest Logbook Event
+  description: >-
+    Read the most recent event for an exact existing event type key. Use this
+    whenever the user asks when something last happened, when the latest event
+    started or ended, whether it is still ongoing, or what notes were recorded.
+    After calling it, tell the user the returned start time, end time or ongoing
+    status, and note when present. Never invent an event type key and never use
+    this tool to create or modify an event.
+  mode: parallel
+  max: 20
+  fields:
+    event_type_key:
+      name: Event type key
+      description: Exact existing key, such as dog_walk, feeding, medication, or weight.
+      required: true
+      selector:
+        text:
+  sequence:
+    - action: rest_command.logbook_get_latest_event
+      data:
+        event_type_key: "{{ event_type_key }}"
+      response_variable: latest_event_response
+
+    - variables:
+        latest_event_result: >-
+          {% if latest_event_response.status == 200 %}
+            {% set event = latest_event_response.content %}
+            {% set started = as_timestamp(event.startedAt)
+              | timestamp_custom('%B %d, %Y at %I:%M %p', true) %}
+            {% if event.eventKind == 'point' %}
+              {% set timing = 'started and ended on ' ~ started ~ ' because it is a point event' %}
+            {% elif event.endedAt is none %}
+              {% set timing = 'started on ' ~ started ~ ' and is still ongoing' %}
+            {% else %}
+              {% set ended = as_timestamp(event.endedAt)
+                | timestamp_custom('%B %d, %Y at %I:%M %p', true) %}
+              {% set timing = 'started on ' ~ started ~ ' and ended on ' ~ ended %}
+            {% endif %}
+            {% set note_text = (' Note: ' ~ event.note) if event.note else '' %}
+            {{ {
+              "found": true,
+              "summary": "The latest " ~ event.eventTypeName ~ " event " ~ timing ~ "." ~ note_text,
+              "eventTypeKey": event.eventType,
+              "eventTypeName": event.eventTypeName,
+              "eventKind": event.eventKind,
+              "startedAt": event.startedAt,
+              "endedAt": event.endedAt,
+              "ongoing": event.ongoing,
+              "note": event.note
+            } }}
+          {% elif latest_event_response.status == 404 %}
+            {{ {
+              "found": false,
+              "summary": "I could not find a recorded event for "
+                ~ (event_type_key | replace('_', ' ')) ~ ".",
+              "eventTypeKey": event_type_key
+            } }}
+          {% else %}
+            {{ {
+              "found": false,
+              "summary": "I could not retrieve the latest "
+                ~ (event_type_key | replace('_', ' ')) ~ " event.",
+              "eventTypeKey": event_type_key,
+              "httpStatus": latest_event_response.status
+            } }}
+          {% endif %}
+
+    - stop: "{{ latest_event_result.summary }}"
+      response_variable: latest_event_result
+
+logbook_update_latest_event:
+  alias: Update Latest Logbook Event
+  description: >-
+    Correct the start time, value, input unit, text value, or note on the most
+    recent event for an exact existing event type key. Use when the user says
+    things such as "the latest walk actually started at 6:15", "change my latest
+    weight to 181 pounds", or "add a note to the last feeding". Only supplied
+    fields are changed. For a point event, changing the start also moves its end
+    to the same instant. For a duration event, its existing end is preserved.
+  mode: queued
+  max: 20
+  fields:
+    event_type_key:
+      name: Event type key
+      description: Exact existing key, such as weight, water, feeding, or medication.
+      required: true
+      selector:
+        text:
+    started_at:
+      name: Corrected start time
+      description: >-
+        Optional ISO 8601 timestamp with a timezone offset, such as
+        2026-07-15T18:15:00-04:00. Resolve relative times before calling.
+      required: false
+      selector:
+        text:
+    value:
+      name: Corrected numeric value
+      description: New numeric value. Supply unit_key for measured event types.
+      required: false
+      selector:
+        number:
+          mode: box
+    unit_key:
+      name: Unit key
+      description: Exact compatible unit key such as lb, ml, tbsp_us, or kwh.
+      required: false
+      selector:
+        text:
+    text_value:
+      name: Text value
+      required: false
+      selector:
+        text:
+    note:
+      name: Note
+      description: Replacement note. Use an empty string to clear the existing note.
+      required: false
+      selector:
+        text:
+  sequence:
+    - action: rest_command.logbook_update_latest_event
+      data:
+        event_type_key: "{{ event_type_key }}"
+        started_at: "{{ started_at | default(none) }}"
+        value: "{{ value | default(none) }}"
+        unit_key: "{{ unit_key | default(none) }}"
+        text_value: "{{ text_value | default(none) }}"
+        note: "{{ note | default(none) }}"
+      response_variable: updated_event_response
+    - variables:
+        updated_event_result: >-
+          {% if updated_event_response.status == 200 %}
+            {% set event = updated_event_response.content %}
+            {{ {
+              "updated": true,
+              "summary": "Updated the latest " ~ event.eventTypeName ~ " event.",
+              "eventTypeKey": event.eventType,
+              "eventTypeName": event.eventTypeName,
+              "eventId": event.id,
+              "startedAt": event.startedAt,
+              "endedAt": event.endedAt,
+              "value": event.displayValue,
+              "unit": event.unit,
+              "textValue": event.textValue,
+              "note": event.note
+            } }}
+          {% elif updated_event_response.status == 404 %}
+            {{ {
+              "updated": false,
+              "summary": "I could not find a recorded event for "
+                ~ (event_type_key | replace('_', ' ')) ~ ".",
+              "eventTypeKey": event_type_key
+            } }}
+          {% else %}
+            {{ {
+              "updated": false,
+              "summary": "I could not update the latest "
+                ~ (event_type_key | replace('_', ' ')) ~ " event.",
+              "eventTypeKey": event_type_key,
+              "httpStatus": updated_event_response.status
+            } }}
+          {% endif %}
+    - stop: "{{ updated_event_result.summary }}"
+      response_variable: updated_event_result
+
+logbook_create_event_type:
+  alias: Create Logbook Event Type
+  description: >-
+    Create a new managed event type only when the user explicitly asks to add a
+    new logbook series. Event behavior is not configured on the type: the log,
+    start, and finish tools determine whether each row is a point or duration.
+    Use exact existing unit type and unit keys, or omit both for a unitless type.
+  mode: queued
+  fields:
+    event_type_key: { name: Event type key, required: true, selector: { text: {} } }
+    name: { name: Name, required: true, selector: { text: {} } }
+    description: { name: Description, required: false, selector: { text: {} } }
+    unit_type_key: { name: Unit type key, required: false, selector: { text: {} } }
+    default_unit_key: { name: Default unit key, required: false, selector: { text: {} } }
+  sequence:
+    - action: rest_command.logbook_create_event_type
+      data:
+        event_type_key: "{{ event_type_key }}"
+        name: "{{ name }}"
+        description: "{{ description | default(none) }}"
+        unit_type_key: "{{ unit_type_key | default(none) }}"
+        default_unit_key: "{{ default_unit_key | default(none) }}"
+    - set_conversation_response: "Created the {{ name }} event type."
+
+logbook_update_event_type:
+  alias: Update Logbook Event Type
+  description: >-
+    Update or archive an existing event type using its exact key. Do not change
+    measurement dimensions after numeric events exist.
+  mode: queued
+  fields:
+    event_type_key: { name: Event type key, required: true, selector: { text: {} } }
+    name: { name: Name, required: false, selector: { text: {} } }
+    description: { name: Description, required: false, selector: { text: {} } }
+    unit_type_key: { name: Unit type key, required: false, selector: { text: {} } }
+    default_unit_key: { name: Default unit key, required: false, selector: { text: {} } }
+    is_active: { name: Active, required: false, selector: { boolean: {} } }
+  sequence:
+    - action: rest_command.logbook_update_event_type
+      data:
+        event_type_key: "{{ event_type_key }}"
+        name: "{{ name | default(none) }}"
+        description: "{{ description | default(none) }}"
+        unit_type_key: "{{ unit_type_key | default(none) }}"
+        default_unit_key: "{{ default_unit_key | default(none) }}"
+        is_active: "{{ is_active | default(none) }}"
+    - set_conversation_response: "Updated {{ event_type_key | replace('_', ' ') }}."
+
+logbook_create_unit_type:
+  alias: Create Logbook Unit Type
+  description: >-
+    Create a new measurement dimension with a canonical base unit. The base unit
+    always has scale 1 and offset 0. Use only when the user explicitly asks to
+    expand the unit catalog.
+  mode: queued
+  fields:
+    unit_type_key: { name: Unit type key, required: true, selector: { text: {} } }
+    name: { name: Name, required: true, selector: { text: {} } }
+    description: { name: Description, required: false, selector: { text: {} } }
+    base_unit_key: { name: Base unit key, required: true, selector: { text: {} } }
+    base_unit_name: { name: Base unit name, required: true, selector: { text: {} } }
+    base_unit_symbol: { name: Base unit symbol, required: true, selector: { text: {} } }
+  sequence:
+    - action: rest_command.logbook_create_unit_type
+      data:
+        unit_type_key: "{{ unit_type_key }}"
+        name: "{{ name }}"
+        description: "{{ description | default(none) }}"
+        base_unit_key: "{{ base_unit_key }}"
+        base_unit_name: "{{ base_unit_name }}"
+        base_unit_symbol: "{{ base_unit_symbol }}"
+    - set_conversation_response: "Created the {{ name }} unit type with {{ base_unit_name }} as its base unit."
+
+logbook_add_unit:
+  alias: Add Logbook Unit
+  description: >-
+    Add a unit to an existing unit type. scale_to_base and offset_to_base define
+    base = input * scale + offset and are required for reliable conversion.
+  mode: queued
+  fields:
+    unit_type_key: { name: Unit type key, required: true, selector: { text: {} } }
+    unit_key: { name: Unit key, required: true, selector: { text: {} } }
+    name: { name: Name, required: true, selector: { text: {} } }
+    symbol: { name: Symbol, required: true, selector: { text: {} } }
+    scale_to_base: { name: Scale to base, required: true, selector: { number: { mode: box } } }
+    offset_to_base: { name: Offset to base, required: false, selector: { number: { mode: box } } }
+  sequence:
+    - action: rest_command.logbook_add_unit
+      data:
+        unit_type_key: "{{ unit_type_key }}"
+        unit_key: "{{ unit_key }}"
+        name: "{{ name }}"
+        symbol: "{{ symbol }}"
+        scale_to_base: "{{ scale_to_base }}"
+        offset_to_base: "{{ offset_to_base | default(0) }}"
+    - set_conversation_response: "Added {{ name }} to the {{ unit_type_key | replace('_', ' ') }} unit type."
+
+logbook_update_unit_type:
+  alias: Update Logbook Unit Type
+  description: >-
+    Rename or update the description of an existing unit type using its exact
+    immutable key. The canonical base unit cannot be changed.
+  mode: queued
+  fields:
+    unit_type_key: { name: Unit type key, required: true, selector: { text: {} } }
+    name: { name: Name, required: false, selector: { text: {} } }
+    description: { name: Description, required: false, selector: { text: {} } }
+  sequence:
+    - action: rest_command.logbook_update_unit_type
+      data:
+        unit_type_key: "{{ unit_type_key }}"
+        name: "{{ name | default(none) }}"
+        description: "{{ description | default(none) }}"
+    - set_conversation_response: "Updated the {{ unit_type_key | replace('_', ' ') }} unit type."
+
+logbook_update_unit:
+  alias: Update Logbook Unit
+  description: >-
+    Update a unit name, symbol, aliases, or an unused conversion. The conversion
+    formula is base = input * scale + offset. Conversion values are locked after
+    the unit has been used by an event.
+  mode: queued
+  fields:
+    unit_type_key: { name: Unit type key, required: true, selector: { text: {} } }
+    unit_key: { name: Unit key, required: true, selector: { text: {} } }
+    name: { name: Name, required: false, selector: { text: {} } }
+    symbol: { name: Symbol, required: false, selector: { text: {} } }
+    scale_to_base: { name: Scale to base, required: false, selector: { number: { mode: box } } }
+    offset_to_base: { name: Offset to base, required: false, selector: { number: { mode: box } } }
+  sequence:
+    - action: rest_command.logbook_update_unit
+      data:
+        unit_type_key: "{{ unit_type_key }}"
+        unit_key: "{{ unit_key }}"
+        name: "{{ name | default(none) }}"
+        symbol: "{{ symbol | default(none) }}"
+        scale_to_base: "{{ scale_to_base | default(none) }}"
+        offset_to_base: "{{ offset_to_base | default(none) }}"
+    - set_conversation_response: "Updated {{ unit_key }} in the {{ unit_type_key | replace('_', ' ') }} unit type."

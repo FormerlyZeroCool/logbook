@@ -1,0 +1,27 @@
+# Secrets and local runtime configuration
+.env
+.env.*
+!.env.example
+
+# Database dumps and backups
+*.dump
+*.sql.gz
+backups/
+
+# Node
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+
+# Editors and OS
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
