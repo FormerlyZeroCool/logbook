@@ -87,7 +87,7 @@ The archive is created at:
 dist/logbook-home-assistant-integration.zip
 ```
 
-## Safe update workflow on the K11
+## Safe update workflow on the Web Server
 
 Do not extract a release over a working checkout and do not replace `.env`.
 
@@ -111,10 +111,3 @@ git add .
 git commit -m "Initial Logbook monorepo"
 ```
 
-The legacy YAML package remains available only as rollback material at:
-
-```text
-home-assistant/legacy/logbook_core_v6.yaml
-```
-
-Do not expose both the legacy YAML voice tools and native integration tools to Assist after the integration has been accepted, because duplicate tools reduce tool-selection reliability.
