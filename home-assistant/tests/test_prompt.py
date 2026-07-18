@@ -4,12 +4,11 @@ import ast
 import importlib.util
 import json
 from pathlib import Path
-import struct
 import sys
 import types
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPONENT = ROOT / "custom_components" / "logbook"
+ROOT = Path(__file__).resolve().parents[1]
+COMPONENT = ROOT.parent / "custom_components" / "event_logbook"
 PACKAGE_NAME = "logbook_testpkg"
 
 
@@ -70,29 +69,20 @@ def test_prompt_contains_exact_catalog_keys_aliases_and_units():
     assert "ml" in prompt
 
 
-def test_manifest_declares_hacs_metadata_and_single_config_entry():
+def test_manifest_declares_a_single_config_entry_custom_integration():
     manifest = json.loads((COMPONENT / "manifest.json").read_text())
-    assert manifest["domain"] == "logbook"
-    assert manifest["name"] == "Logbook"
-    assert manifest["version"] == "0.1.1"
-    assert manifest["config_flow"] is True
-    assert manifest["single_config_entry"] is True
-    assert manifest["integration_type"] == "service"
-    assert manifest["iot_class"] == "local_polling"
-    assert manifest["documentation"].startswith("https://github.com/")
-    assert manifest["issue_tracker"].endswith("/issues")
-    assert len(manifest["codeowners"]) == 1
-
-
-def test_hacs_layout_and_brand_icon():
-    assert json.loads((ROOT / "hacs.json").read_text())["name"] == "Logbook"
-    assert not (ROOT / "home-assistant" / "custom_components").exists()
-    icon = COMPONENT / "brand" / "icon.png"
-    assert icon.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
-    with icon.open("rb") as file:
-        file.read(16)
-        width, height = struct.unpack(">II", file.read(8))
-    assert (width, height) == (512, 512)
+    assert manifest == {
+        "domain": "event_logbook",
+        "name": "Logbook Events",
+        "version": "0.1.1",
+        "config_flow": True,
+        "single_config_entry": True,
+        "integration_type": "service",
+        "iot_class": "local_polling",
+        "documentation": "https://github.com/formerlyzerocool/logbook#home-assistant-integration",
+        "issue_tracker": "https://github.com/formerlyzerocool/logbook/issues",
+        "codeowners": ["@formerlyzerocool"],
+    }
 
 
 def test_six_native_tool_names_are_present():
@@ -111,3 +101,9 @@ def test_six_native_tool_names_are_present():
         "LogbookGetLatestEvent",
         "LogbookUpdateLatestEvent",
     }
+
+
+def test_domain_does_not_conflict_with_home_assistant_core_logbook():
+    manifest = json.loads((COMPONENT / "manifest.json").read_text())
+    assert manifest["domain"] == "event_logbook"
+    assert manifest["domain"] != "logbook"

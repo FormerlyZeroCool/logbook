@@ -1,9 +1,9 @@
 {
-  "title": "Logbook",
+  "title": "Logbook Events",
   "config": {
     "step": {
       "user": {
-        "title": "Connect to Logbook",
+        "title": "Connect to Logbook Events",
         "description": "Connect Home Assistant to the local Logbook backend. Requires backend v0.11.0 or newer.",
         "data": {
           "url": "Backend URL",
@@ -12,12 +12,14 @@
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate Logbook",
+        "title": "Reauthenticate Logbook Events",
         "description": "Enter the current Logbook API key.",
-        "data": {"api_key": "API key"}
+        "data": {
+          "api_key": "API key"
+        }
       },
       "reconfigure": {
-        "title": "Reconfigure Logbook",
+        "title": "Reconfigure Logbook Events",
         "data": {
           "url": "Backend URL",
           "api_key": "API key",

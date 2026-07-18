@@ -1,14 +1,14 @@
 {
-  "domain": "logbook",
-  "name": "Logbook",
+  "domain": "event_logbook",
+  "name": "Logbook Events",
   "version": "0.1.1",
+  "config_flow": true,
+  "single_config_entry": true,
+  "integration_type": "service",
+  "iot_class": "local_polling",
   "documentation": "https://github.com/formerlyzerocool/logbook#home-assistant-integration",
   "issue_tracker": "https://github.com/formerlyzerocool/logbook/issues",
   "codeowners": [
     "@formerlyzerocool"
-  ],
-  "config_flow": true,
-  "single_config_entry": true,
-  "integration_type": "service",
-  "iot_class": "local_polling"
+  ]
 }

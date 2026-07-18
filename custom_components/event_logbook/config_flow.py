@@ -59,7 +59,7 @@ async def _validate(hass, user_input: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-class LogbookConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+class EventLogbookConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configure a local Logbook backend."""
 
     VERSION = 1
@@ -80,7 +80,7 @@ class LogbookConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 await self.async_set_unique_id(DOMAIN)
                 self._abort_if_unique_id_configured()
-                title = f"Logbook ({validated['title']})"
+                title = f"Logbook Events ({validated['title']})"
                 data = {key: validated[key] for key in (CONF_URL, CONF_API_KEY, CONF_REFRESH_INTERVAL)}
                 return self.async_create_entry(title=title, data=data)
 
