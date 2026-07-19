@@ -7,9 +7,11 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 from homeassistant.helpers.llm import APIInstance, LLMContext
+from homeassistant.util import dt as dt_util
 
 from .prompt import build_prompt
 from .runtime import LogbookRuntime
+from .time_utils import current_time_context
 from .tools import build_tools
 
 _LOGGER = logging.getLogger(__name__)
@@ -31,9 +33,13 @@ class LogbookAPI(llm.API):
             "Providing Logbook LLM API tools: %s",
             [tool.name for tool in tools],
         )
+        clock = current_time_context(
+            self.hass.config.time_zone,
+            dt_util.utcnow(),
+        )
         return APIInstance(
             api=self,
-            api_prompt=build_prompt(catalog),
+            api_prompt=build_prompt(catalog, clock),
             llm_context=llm_context,
             tools=tools,
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .models import VoiceCatalog
+from .time_utils import CurrentTimeContext
 
 BASE_PROMPT = """You have access to native Logbook tools for recording and retrieving household events.
 
@@ -17,7 +18,12 @@ Tool selection rules:
 - Use only a unit_key listed as compatible with the chosen event type. Do not invent unit keys.
 - Event types do not have a permanently fixed point/duration mode. Choose point versus duration based on what the user says happened.
 - Omit fields the user did not supply. Never invent a value, unit, text, note, start time, or finish time.
-- Resolve relative times into ISO 8601 timestamps with a timezone offset before calling a tool.
+- The Current Home Assistant clock below is authoritative for the current date and time.
+- When the user says now, just now, or gives no time, omit the timestamp argument. The integration inserts the current Home Assistant time.
+- For a time in the Home Assistant local timezone, pass a local ISO 8601 wall-clock value without `Z`, for example `2026-07-18T21:21:00`. The integration applies the configured timezone and converts it to UTC.
+- Never append `Z` to a local wall-clock time. `Z` means the supplied time is already UTC.
+- For a time explicitly stated in another timezone, pass an ISO 8601 value with the correct numeric offset.
+- Resolve relative times from the authoritative current local time below before calling a tool.
 - After a tool runs, relay its returned result to the user.
 - Call the exact tool name offered by Home Assistant. On Home Assistant 2026.7, when Logbook and Assist are selected together, Logbook tool names are prefixed with `Logbook__`, for example `Logbook__LogbookGetLatestEvent`.
 
@@ -28,9 +34,19 @@ Default response style:
 """
 
 
-def build_prompt(catalog: VoiceCatalog) -> str:
-    """Build the per-request prompt fragment with the current exact catalog."""
-    lines = [BASE_PROMPT.rstrip(), "", "Current Logbook catalog:"]
+def build_prompt(catalog: VoiceCatalog, clock: CurrentTimeContext) -> str:
+    """Build the per-request prompt fragment with the current exact catalog and clock."""
+    lines = [
+        BASE_PROMPT.rstrip(),
+        "",
+        "Current Home Assistant clock (authoritative):",
+        f"- Time zone: {clock.timezone_name} ({clock.timezone_abbreviation})",
+        f"- Local time: {clock.local_human}",
+        f"- Local ISO: {clock.local_iso}",
+        f"- UTC ISO: {clock.utc_iso}",
+        "",
+        "Current Logbook catalog:",
+    ]
     if not catalog.event_types:
         lines.append("- No active event types are currently configured.")
         return "\n".join(lines)

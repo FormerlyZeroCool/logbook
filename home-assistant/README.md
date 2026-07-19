@@ -18,7 +18,7 @@ The integration validates `/api/v1/capabilities`, downloads `/api/v1/voice-catal
 
 ## Home Assistant 2026.7 conversation setup
 
-Home Assistant 2026.7 does not yet merge tools from an integration's `llm.py` into the built-in Assist API. Version 0.1.3 therefore registers a separate LLM API named **Logbook**.
+Home Assistant 2026.7 can load a prompt fragment from an integration's `llm.py` without reliably dispatching the corresponding tools. Version 0.1.5 therefore always registers a separate LLM API named **Logbook** and leaves the contributed-tool platform as a no-op.
 
 Open the Ollama conversation entity's configuration and select both LLM APIs:
 
@@ -34,7 +34,7 @@ Home Assistant merges selected APIs and namespaces their tools. Logbook tool nam
 - `Logbook__LogbookGetLatestEvent`
 - `Logbook__LogbookUpdateLatestEvent`
 
-The integration prompt tells the model to call the exact offered name. When Home Assistant gains the contributed-tool platform, the compatibility API is not registered and the tools are contributed directly to Assist without duplication.
+The integration prompt tells the model to call the exact offered name. The dedicated Logbook API is always registered so the prompt and callable tools cannot become separated.
 
 ## Native LLM tools
 
@@ -64,3 +64,16 @@ after changing event types or aliases when you do not want to wait for the next 
 ## Domain migration from v0.1.0
 
 Version 0.1.0 used `custom_components/logbook`, which conflicts with Home Assistant Core's built-in `logbook` integration. Remove that old custom directory and config entry. Current versions install as `custom_components/event_logbook`.
+
+
+## Timestamp behavior in v0.1.5
+
+Every LLM request includes Home Assistant's authoritative current local time, IANA timezone, local ISO value, and UTC ISO value. For write tools:
+
+- An omitted timestamp means now and is filled by the integration.
+- A naive ISO value such as `2026-07-18T21:21:00` is interpreted in Home Assistant's configured timezone.
+- An offset-aware ISO value preserves its represented instant.
+- The integration converts timestamps exactly once and sends canonical UTC with `Z` to the backend.
+- Ambiguous or nonexistent local times during daylight-saving transitions are rejected unless an explicit numeric offset is supplied.
+
+Tool results also include local ISO timestamps beside the backend UTC timestamps.

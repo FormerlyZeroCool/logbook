@@ -1,15 +1,16 @@
-"""Contribute Logbook tools and prompt context to Home Assistant LLM APIs."""
+"""Disable prompt-only contributed tools until Home Assistant dispatches them reliably.
+
+Logbook is exposed through the separately registered ``Logbook`` LLM API in
+``llm_api.py``. Users select both Assist and Logbook in their conversation
+agent. Keeping this platform as a no-op prevents the model from seeing Logbook
+instructions when the corresponding tools are not in the active API instance.
+"""
 
 from __future__ import annotations
 
 from homeassistant.components import llm as llm_component
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.llm import LLMContext
-
-from .const import DOMAIN
-from .prompt import build_prompt
-from .runtime import LogbookRuntime
-from .tools import build_tools
 
 
 @callback
@@ -18,18 +19,6 @@ def async_get_tools(
     llm_context: LLMContext,
     api_id: str,
 ) -> llm_component.LLMTools | None:
-    """Return dynamically constrained tools for every assembled LLM request."""
-    del llm_context, api_id
-    runtimes = hass.data.get(DOMAIN, {})
-    runtime = next(
-        (item for item in runtimes.values() if isinstance(item, LogbookRuntime)),
-        None,
-    )
-    if runtime is None or runtime.coordinator.data is None:
-        return None
-
-    catalog = runtime.coordinator.data
-    return llm_component.LLMTools(
-        tools=build_tools(runtime.client, catalog),
-        prompt=build_prompt(catalog),
-    )
+    """Return no contributed tools; use the registered Logbook LLM API."""
+    del hass, llm_context, api_id
+    return None

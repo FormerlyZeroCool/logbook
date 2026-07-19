@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import datetime, timezone
 import importlib.util
 import json
 from pathlib import Path
@@ -26,9 +27,11 @@ package = types.ModuleType(PACKAGE_NAME)
 package.__path__ = [str(COMPONENT)]
 sys.modules[PACKAGE_NAME] = package
 models = _load_module("models", "models.py")
+time_utils = _load_module("time_utils", "time_utils.py")
 prompt_module = _load_module("prompt", "prompt.py")
 VoiceCatalog = models.VoiceCatalog
 build_prompt = prompt_module.build_prompt
+CurrentTimeContext = time_utils.CurrentTimeContext
 
 
 def sample_catalog():
@@ -49,8 +52,15 @@ def sample_catalog():
     })
 
 
+
+def sample_clock():
+    return time_utils.current_time_context(
+        "America/New_York",
+        datetime(2026, 7, 19, 1, 20, 32, tzinfo=timezone.utc),
+    )
+
 def test_prompt_contains_tool_rules_and_default_format():
-    prompt = build_prompt(sample_catalog())
+    prompt = build_prompt(sample_catalog(), sample_clock())
     assert "Use LogbookLogPointEvent for an observation" in prompt
     assert "Use LogbookStartDurationEvent when an activity begins" in prompt
     assert "Use LogbookFinishDurationEvent when the user says" in prompt
@@ -60,10 +70,15 @@ def test_prompt_contains_tool_rules_and_default_format():
     assert "After a tool runs, relay its returned result" in prompt
     assert "{event type} happened at {start time human readable}" in prompt
     assert "Logbook__LogbookGetLatestEvent" in prompt
+    assert "Current Home Assistant clock (authoritative)" in prompt
+    assert "America/New_York (EDT)" in prompt
+    assert "2026-07-18T21:20:32-04:00" in prompt
+    assert "2026-07-19T01:20:32.000Z" in prompt
+    assert "Never append `Z` to a local wall-clock time" in prompt
 
 
 def test_prompt_contains_exact_catalog_keys_aliases_and_units():
-    prompt = build_prompt(sample_catalog())
+    prompt = build_prompt(sample_catalog(), sample_clock())
     assert "feeding_jay — Feeding Jay" in prompt
     assert "feed Jay, Jay feeding" in prompt
     assert "fl_oz_us" in prompt
@@ -75,7 +90,7 @@ def test_manifest_declares_a_single_config_entry_custom_integration():
     assert manifest == {
         "domain": "event_logbook",
         "name": "Logbook Events",
-        "version": "0.1.3",
+        "version": "0.1.5",
         "config_flow": True,
         "single_config_entry": True,
         "integration_type": "service",
@@ -119,7 +134,29 @@ def test_legacy_llm_api_is_registered_for_home_assistant_2026_7():
     assert 'name="Logbook"' in api_source
 
 
-def test_future_contributed_tool_platform_is_kept_without_duplicate_registration():
+def test_logbook_api_registration_is_unconditional():
     init_source = (COMPONENT / "__init__.py").read_text()
-    assert 'hasattr(llm_component, "LLMTools")' in init_source
-    assert (COMPONENT / "llm.py").is_file()
+    assert "unregister_api = llm.async_register_api" in init_source
+    assert 'hasattr(llm_component, "LLMTools")' not in init_source
+
+
+def test_contributed_tool_platform_is_a_noop_to_prevent_ghost_tools():
+    llm_source = (COMPONENT / "llm.py").read_text()
+    assert "return None" in llm_source
+    assert "build_tools" not in llm_source
+    assert "build_prompt" not in llm_source
+
+
+def test_write_tools_always_send_explicit_utc_timestamps():
+    tools_source = (COMPONENT / "tools.py").read_text()
+    assert '"occurredAt": _utc_timestamp(hass, args.get("occurred_at"))' in tools_source
+    assert '"startedAt": _utc_timestamp(hass, args.get("started_at"))' in tools_source
+    assert '"endedAt": _utc_timestamp(hass, args.get("ended_at"))' in tools_source
+    assert 'payload["startedAt"] = _utc_timestamp(hass, args.get("started_at"))' in tools_source
+
+
+def test_llm_api_builds_prompt_with_home_assistant_current_time():
+    source = (COMPONENT / "llm_api.py").read_text()
+    assert "self.hass.config.time_zone" in source
+    assert "dt_util.utcnow()" in source
+    assert "current_time_context" in source

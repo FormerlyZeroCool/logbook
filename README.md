@@ -21,7 +21,7 @@ Current component versions:
 
 - Backend: 0.11.0
 - Frontend: 0.13.3
-- Home Assistant integration: 0.1.1
+- Home Assistant integration: 0.1.5
 
 ## Important environment-file rule
 
@@ -109,3 +109,8 @@ Integration v0.1.0 incorrectly used Home Assistant's reserved core domain `logbo
 ## Home Assistant 2026.7 LLM APIs
 
 After installing the integration, configure the Ollama conversation entity to use both **Assist** and **Logbook** LLM APIs. Home Assistant 2026.7 merges them and exposes Logbook tools with a `Logbook__` prefix.
+
+
+## Home Assistant time handling
+
+The Logbook LLM API supplies every model request with Home Assistant's current local time, IANA timezone, local ISO timestamp, and UTC timestamp. Write tools normalize all event timestamps inside the integration and always send canonical UTC values to the backend. Missing timestamps mean "now" and use the Home Assistant integration clock, not the backend clock.

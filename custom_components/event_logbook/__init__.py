@@ -83,25 +83,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     runtime = LogbookRuntime(client=client, coordinator=coordinator, capabilities=capabilities)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
 
-    # Home Assistant 2026.7 exposes custom tools through separately registered
-    # LLM APIs. Newer releases discover custom_components/<domain>/llm.py and
-    # merge contributed tools directly into Assist. Register the compatibility
-    # API only when that newer platform is unavailable.
-    try:
-        from homeassistant.components import llm as llm_component
-    except ImportError:
-        llm_component = None
+    # Register Logbook as its own selectable LLM API. Home Assistant 2026.7
+    # can load prompt fragments from custom_components/<domain>/llm.py without
+    # reliably adding those tools to the active API instance. Registering a
+    # dedicated API is the supported, deterministic path: users select both
+    # Assist and Logbook in their conversation agent, and Home Assistant merges
+    # and namespaces the tool sets.
+    unregister_api = llm.async_register_api(hass, LogbookAPI(hass, runtime))
+    entry.async_on_unload(unregister_api)
+    _LOGGER.info(
+        "Registered LLM API 'Logbook'; select it together with Assist in the conversation agent"
+    )
 
-    if llm_component is None or not hasattr(llm_component, "LLMTools"):
-        unregister_api = llm.async_register_api(hass, LogbookAPI(hass, runtime))
-        entry.async_on_unload(unregister_api)
-        _LOGGER.info(
-            "Registered compatibility LLM API 'Logbook'; select it together with Assist in the conversation agent"
-        )
-    else:
-        _LOGGER.debug("Using Home Assistant contributed LLM tool platform")
-
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    # Reconfigure and reauthentication flows already use
+    # async_update_reload_and_abort(), so no generic config-entry update listener
+    # is required here. Avoiding that listener also avoids the 2026.12 reload
+    # scheduling deprecation warning.
     return True
 
 
@@ -110,7 +107,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return True
 
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload when URL, key, or refresh interval changes."""
-    await hass.config_entries.async_reload(entry.entry_id)
