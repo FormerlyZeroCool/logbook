@@ -59,6 +59,7 @@ def test_prompt_contains_tool_rules_and_default_format():
     assert "Always provide an exact existing event_type_key" in prompt
     assert "After a tool runs, relay its returned result" in prompt
     assert "{event type} happened at {start time human readable}" in prompt
+    assert "Logbook__LogbookGetLatestEvent" in prompt
 
 
 def test_prompt_contains_exact_catalog_keys_aliases_and_units():
@@ -74,7 +75,7 @@ def test_manifest_declares_a_single_config_entry_custom_integration():
     assert manifest == {
         "domain": "event_logbook",
         "name": "Logbook Events",
-        "version": "0.1.1",
+        "version": "0.1.3",
         "config_flow": True,
         "single_config_entry": True,
         "integration_type": "service",
@@ -107,3 +108,18 @@ def test_domain_does_not_conflict_with_home_assistant_core_logbook():
     manifest = json.loads((COMPONENT / "manifest.json").read_text())
     assert manifest["domain"] == "event_logbook"
     assert manifest["domain"] != "logbook"
+
+
+def test_legacy_llm_api_is_registered_for_home_assistant_2026_7():
+    init_source = (COMPONENT / "__init__.py").read_text()
+    api_source = (COMPONENT / "llm_api.py").read_text()
+    assert "llm.async_register_api" in init_source
+    assert "class LogbookAPI(llm.API)" in api_source
+    assert 'id="event_logbook"' in api_source
+    assert 'name="Logbook"' in api_source
+
+
+def test_future_contributed_tool_platform_is_kept_without_duplicate_registration():
+    init_source = (COMPONENT / "__init__.py").read_text()
+    assert 'hasattr(llm_component, "LLMTools")' in init_source
+    assert (COMPONENT / "llm.py").is_file()

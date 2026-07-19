@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_URL
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import llm
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import LogbookClient
@@ -22,7 +24,10 @@ from .const import (
 )
 from .coordinator import LogbookCoordinator
 from .exceptions import LogbookApiError, LogbookAuthError, LogbookConnectionError
+from .llm_api import LogbookAPI
 from .runtime import LogbookRuntime
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
@@ -77,6 +82,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     runtime = LogbookRuntime(client=client, coordinator=coordinator, capabilities=capabilities)
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = runtime
+
+    # Home Assistant 2026.7 exposes custom tools through separately registered
+    # LLM APIs. Newer releases discover custom_components/<domain>/llm.py and
+    # merge contributed tools directly into Assist. Register the compatibility
+    # API only when that newer platform is unavailable.
+    try:
+        from homeassistant.components import llm as llm_component
+    except ImportError:
+        llm_component = None
+
+    if llm_component is None or not hasattr(llm_component, "LLMTools"):
+        unregister_api = llm.async_register_api(hass, LogbookAPI(hass, runtime))
+        entry.async_on_unload(unregister_api)
+        _LOGGER.info(
+            "Registered compatibility LLM API 'Logbook'; select it together with Assist in the conversation agent"
+        )
+    else:
+        _LOGGER.debug("Using Home Assistant contributed LLM tool platform")
+
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 

@@ -7,14 +7,12 @@ logbook/
 ├── backend/                       # Fastify/TypeScript API and migrations
 ├── frontend/                      # React/Vite dashboard and Nginx proxy
 ├── custom_components/
-│   └── logbook/                   # HACS-compatible Home Assistant integration
-│       ├── brand/icon.png
-│       └── manifest.json
+│   └── event_logbook/             # HACS-compatible Home Assistant integration
+├── brand/                         # HACS brand assets
 ├── home-assistant/
-│   ├── tests/                     # Integration tests
+│   ├── tests/
 │   └── legacy/logbook_core_v6.yaml
 ├── scripts/
-├── hacs.json
 ├── compose.yaml
 └── .env.example
 ```
@@ -45,49 +43,21 @@ The root Compose project runs PostgreSQL/TimescaleDB, the API, and the frontend:
 ./scripts/deploy-stack.sh
 ```
 
-The Home Assistant integration runs inside Home Assistant rather than in Docker Compose.
-
-## Home Assistant integration
-
-The integration source of truth is:
+The Home Assistant integration is source code in this repository, but it runs inside Home Assistant rather than in Docker Compose. Copy or sync:
 
 ```text
-custom_components/logbook
+custom_components/event_logbook
 ```
 
-For a manual installation, copy that directory to:
+to:
 
 ```text
-/config/custom_components/logbook
+/config/custom_components/event_logbook
 ```
 
-Restart Home Assistant, then add **Logbook** under **Settings → Devices & services**.
+Then restart Home Assistant and add **Logbook Events** under **Settings → Devices & services**.
 
-### HACS repository preparation
-
-The repository is laid out for HACS with exactly one integration under `custom_components/`, a root `hacs.json`, and a local brand icon.
-
-Before publishing, replace every occurrence of:
-
-```text
-FormerlyZeroCool
-```
-
-in `custom_components/logbook/manifest.json` with the GitHub account that will own the repository. Then publish the repository and add it to HACS as a custom **Integration** repository.
-
-Package the integration manually with:
-
-```bash
-./scripts/package-ha-integration.sh
-```
-
-The archive is created at:
-
-```text
-dist/logbook-home-assistant-integration.zip
-```
-
-## Safe update workflow on the Web Server
+## Safe update workflow on the K11
 
 Do not extract a release over a working checkout and do not replace `.env`.
 
@@ -111,3 +81,31 @@ git add .
 git commit -m "Initial Logbook monorepo"
 ```
 
+Add a private remote before pushing because the project controls personal household data, even though `.env` and database dumps are excluded.
+
+## Home Assistant integration development
+
+The source of truth is:
+
+```text
+custom_components/event_logbook
+```
+
+The domain is intentionally `event_logbook`. Home Assistant already owns the core `logbook` domain for its built-in Activity integration, so a custom component must not use that domain.
+
+For a manual installation, copy that directory into Home Assistant's `/config/custom_components/`. During transition, the legacy YAML package remains under:
+
+```text
+home-assistant/legacy/logbook_core_v6.yaml
+```
+
+Do not expose both the legacy YAML voice tools and native integration tools to Assist after the integration has been accepted, because duplicate tools reduce tool-selection reliability.
+
+## Migrating from integration v0.1.0
+
+Integration v0.1.0 incorrectly used Home Assistant's reserved core domain `logbook`. Remove `/config/custom_components/logbook` and its custom config entry before installing v0.1.1. Then install `custom_components/event_logbook`, restart Home Assistant, and add **Logbook Events** again. The backend API key and event data do not change.
+
+
+## Home Assistant 2026.7 LLM APIs
+
+After installing the integration, configure the Ollama conversation entity to use both **Assist** and **Logbook** LLM APIs. Home Assistant 2026.7 merges them and exposes Logbook tools with a `Logbook__` prefix.

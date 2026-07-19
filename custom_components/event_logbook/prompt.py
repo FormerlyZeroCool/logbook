@@ -19,6 +19,7 @@ Tool selection rules:
 - Omit fields the user did not supply. Never invent a value, unit, text, note, start time, or finish time.
 - Resolve relative times into ISO 8601 timestamps with a timezone offset before calling a tool.
 - After a tool runs, relay its returned result to the user.
+- Call the exact tool name offered by Home Assistant. On Home Assistant 2026.7, when Logbook and Assist are selected together, Logbook tool names are prefixed with `Logbook__`, for example `Logbook__LogbookGetLatestEvent`.
 
 Default response style:
 - When the user asks about an event, respond in the form: `{event type} happened at {start time human readable} {end time human readable} with {value}{unit} {note}`.
