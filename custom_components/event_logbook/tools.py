@@ -18,6 +18,7 @@ from .api import LogbookClient
 from .exceptions import LogbookApiError
 from .models import CatalogEventType, VoiceCatalog
 from .time_utils import LogbookTimeError, event_with_local_times, normalize_timestamp_to_utc
+from .unit_utils import event_with_default_display_unit
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,12 +35,24 @@ def _optional_payload(args: dict[str, Any], mapping: dict[str, str]) -> dict[str
     return payload
 
 
-def _result(hass: HomeAssistant, action: str, event: dict[str, Any]) -> JsonObjectType:
+def _result(
+    hass: HomeAssistant,
+    action: str,
+    event: dict[str, Any],
+    event_type: CatalogEventType,
+) -> JsonObjectType:
+    normalized = event_with_default_display_unit(event, event_type)
     return {
         "success": True,
         "action": action,
-        "event": event_with_local_times(event, hass.config.time_zone),
-        "instruction": "Relay this result to the user using the supplied local timestamps and omit absent fields.",
+        "event": event_with_local_times(normalized, hass.config.time_zone),
+        "instruction": (
+            "Relay this result using event.measurement.value with "
+            "event.measurement.unit. That measurement is already converted to "
+            "the event type's default display unit. Do not report "
+            "event.canonicalValue as though it used the display unit. Use the "
+            "supplied local timestamps and omit absent fields."
+        ),
     }
 
 
@@ -117,6 +130,7 @@ class ListEventTypesTool(BaseLogbookTool):
                     "description": event_type.description,
                     "voiceAliases": list(event_type.voice_aliases),
                     "defaultUnitKey": event_type.default_unit_key,
+                    "defaultUnitSymbol": event_type.default_unit_symbol,
                     "compatibleUnitKeys": list(event_type.unit_keys),
                 }
                 for event_type in self.catalog.event_types
@@ -154,7 +168,7 @@ class LogPointEventTool(BaseLogbookTool):
             "text_value": "textValue", "note": "note",
         }))
         try:
-            return _result(hass, "logged_point_event", await self.client.async_log_point(payload, tool_input.id))
+            return _result(hass, "logged_point_event", await self.client.async_log_point(payload, tool_input.id), event_type)
         except LogbookApiError as err:
             _raise_tool_error(err)
 
@@ -189,7 +203,7 @@ class StartDurationEventTool(BaseLogbookTool):
             "text_value": "textValue", "note": "note",
         }))
         try:
-            return _result(hass, "started_duration_event", await self.client.async_start_duration(payload, tool_input.id))
+            return _result(hass, "started_duration_event", await self.client.async_start_duration(payload, tool_input.id), event_type)
         except LogbookApiError as err:
             _raise_tool_error(err)
 
@@ -221,14 +235,14 @@ class FinishDurationEventTool(BaseLogbookTool):
             "value": "value", "unit_key": "unitKey",
         }))
         try:
-            return _result(hass, "finished_duration_event", await self.client.async_finish_duration(payload, tool_input.id))
+            return _result(hass, "finished_duration_event", await self.client.async_finish_duration(payload, tool_input.id), event_type)
         except LogbookApiError as err:
             _raise_tool_error(err)
 
 
 class GetLatestEventTool(BaseLogbookTool):
     name = "LogbookGetLatestEvent"
-    description = "Get the latest event's start, finish, ongoing state, value, text, and note."
+    description = "Get the latest event with its numeric value converted to the event type's default display unit, plus start, finish, ongoing state, text, and note."
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
@@ -241,7 +255,7 @@ class GetLatestEventTool(BaseLogbookTool):
         self._log_call(tool_input)
         event_type = self._event_type(tool_input.tool_args["event_type_key"])
         try:
-            return _result(hass, "retrieved_latest_event", await self.client.async_get_latest(event_type.key))
+            return _result(hass, "retrieved_latest_event", await self.client.async_get_latest(event_type.key), event_type)
         except LogbookApiError as err:
             _raise_tool_error(err)
 
@@ -282,6 +296,7 @@ class UpdateLatestEventTool(BaseLogbookTool):
                 hass,
                 "updated_latest_event",
                 await self.client.async_update_latest(event_type.key, payload, tool_input.id),
+                event_type,
             )
         except LogbookApiError as err:
             _raise_tool_error(err)

@@ -25,6 +25,8 @@ Tool selection rules:
 - For a time explicitly stated in another timezone, pass an ISO 8601 value with the correct numeric offset.
 - Resolve relative times from the authoritative current local time below before calling a tool.
 - After a tool runs, relay its returned result to the user.
+- For numeric tool results, report `event.measurement.value` with `event.measurement.unit` (or `unitKey`). The integration has already converted that measurement to the event type's configured default display unit.
+- `event.canonicalValue` and `event.canonicalMeasurement` describe backend storage units only. Never pair a canonical value with the display unit, and do not expose canonical storage values unless the user explicitly asks for them.
 - Call the exact tool name offered by Home Assistant. On Home Assistant 2026.7, when Logbook and Assist are selected together, Logbook tool names are prefixed with `Logbook__`, for example `Logbook__LogbookGetLatestEvent`.
 
 Default response style:

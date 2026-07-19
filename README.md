@@ -21,7 +21,7 @@ Current component versions:
 
 - Backend: 0.11.0
 - Frontend: 0.13.3
-- Home Assistant integration: 0.1.5
+- Home Assistant integration: 0.1.6
 
 ## Important environment-file rule
 
@@ -114,3 +114,7 @@ After installing the integration, configure the Ollama conversation entity to us
 ## Home Assistant time handling
 
 The Logbook LLM API supplies every model request with Home Assistant's current local time, IANA timezone, local ISO timestamp, and UTC timestamp. Write tools normalize all event timestamps inside the integration and always send canonical UTC values to the backend. Missing timestamps mean "now" and use the Home Assistant integration clock, not the backend clock.
+
+## Home Assistant display-unit handling
+
+The native integration converts backend canonical values into each event type's configured default display unit before returning a tool result to the LLM. For example, a `feeding_jay` value stored canonically in milliliters is presented through `event.measurement` in `fl_oz_us` when that is the event type's default unit. Canonical storage values remain available under explicitly named diagnostic fields and are not used for normal voice responses.
