@@ -75,6 +75,8 @@ def test_prompt_contains_tool_rules_and_default_format():
     assert "2026-07-18T21:20:32-04:00" in prompt
     assert "2026-07-19T01:20:32.000Z" in prompt
     assert "Never append `Z` to a local wall-clock time" in prompt
+    assert "event.measurement.value" in prompt
+    assert "Never pair a canonical value with the display unit" in prompt
 
 
 def test_prompt_contains_exact_catalog_keys_aliases_and_units():
@@ -90,7 +92,7 @@ def test_manifest_declares_a_single_config_entry_custom_integration():
     assert manifest == {
         "domain": "event_logbook",
         "name": "Logbook Events",
-        "version": "0.1.5",
+        "version": "0.1.7",
         "config_flow": True,
         "single_config_entry": True,
         "integration_type": "service",
@@ -160,3 +162,37 @@ def test_llm_api_builds_prompt_with_home_assistant_current_time():
     assert "self.hass.config.time_zone" in source
     assert "dt_util.utcnow()" in source
     assert "current_time_context" in source
+
+
+def test_tool_results_normalize_default_display_units_for_llm():
+    tools_source = (COMPONENT / "tools.py").read_text()
+    assert "event_with_default_display_unit" in tools_source
+    assert "event.measurement.value" in tools_source
+    assert '"defaultUnitSymbol": event_type.default_unit_symbol' in tools_source
+
+
+def test_prompt_lists_required_and_optional_fields_for_every_tool():
+    prompt = build_prompt(sample_catalog(), sample_clock())
+    assert "LogbookListEventTypes: no arguments" in prompt
+    assert "LogbookLogPointEvent: required `event_type_key`; optional" in prompt
+    assert "LogbookStartDurationEvent: required `event_type_key`; optional" in prompt
+    assert "LogbookFinishDurationEvent: required `event_type_key`; optional" in prompt
+    assert "LogbookGetLatestEvent: required `event_type_key`; no optional fields" in prompt
+    assert "LogbookUpdateLatestEvent: required `event_type_key` plus at least one" in prompt
+    assert "Never send optional fields as placeholders" in prompt
+    assert "`unit_key` is never required" in prompt
+
+
+def test_individual_tool_descriptions_and_fields_mark_optionality():
+    source = (COMPONENT / "tools.py").read_text()
+    assert "Required field: event_type_key" in source
+    assert "Optional fields: occurred_at, value, unit_key, text_value, note" in source
+    assert "Optional fields: started_at, value, unit_key, text_value, note" in source
+    assert "Optional fields: ended_at, value, unit_key" in source
+    assert "There are no optional " in source and "fields." in source
+    assert "Also provide at least one optional correction field" in source
+    assert "description=EVENT_TYPE_KEY_DESCRIPTION" in source
+    assert "description=OPTIONAL_VALUE_DESCRIPTION" in source
+    assert "description=OPTIONAL_UNIT_DESCRIPTION" in source
+    assert "description=OPTIONAL_TEXT_DESCRIPTION" in source
+    assert "description=OPTIONAL_NOTE_DESCRIPTION" in source

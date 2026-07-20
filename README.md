@@ -21,7 +21,7 @@ Current component versions:
 
 - Backend: 0.11.0
 - Frontend: 0.13.3
-- Home Assistant integration: 0.1.6
+- Home Assistant integration: 0.1.7
 
 ## Important environment-file rule
 

@@ -23,6 +23,31 @@ from .unit_utils import event_with_default_display_unit
 _LOGGER = logging.getLogger(__name__)
 
 
+EVENT_TYPE_KEY_DESCRIPTION = (
+    "Required. Exact existing event type key from the current Logbook catalog."
+)
+NOW_OR_EXPLICIT_TIME_DESCRIPTION = (
+    "Optional. Omit when the user means now or gave no time; the integration "
+    "inserts the current Home Assistant time. Otherwise supply local ISO 8601 "
+    "without Z, or an offset-aware ISO 8601 value."
+)
+OPTIONAL_VALUE_DESCRIPTION = (
+    "Optional. Numeric measurement supplied by the user. Omit when no numeric "
+    "value was given."
+)
+OPTIONAL_UNIT_DESCRIPTION = (
+    "Optional. Exact compatible unit key for value. Include only together with "
+    "a numeric value. Omit to use the event type's configured default unit."
+)
+OPTIONAL_TEXT_DESCRIPTION = (
+    "Optional. Text measurement supplied by the user. Omit when absent; this is "
+    "separate from note."
+)
+OPTIONAL_NOTE_DESCRIPTION = (
+    "Optional. User-provided note. Omit when absent."
+)
+
+
 class LogbookToolError(HomeAssistantError):
     """A user-facing Logbook tool failure."""
 
@@ -115,7 +140,10 @@ class BaseLogbookTool(llm.Tool):
 
 class ListEventTypesTool(BaseLogbookTool):
     name = "LogbookListEventTypes"
-    description = "List the exact active Logbook event type keys, aliases, and compatible units."
+    description = (
+        "List the exact active Logbook event type keys, aliases, default units, "
+        "and compatible units. This tool takes no arguments."
+    )
     parameters = vol.Schema({})
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:
@@ -140,17 +168,29 @@ class ListEventTypesTool(BaseLogbookTool):
 
 class LogPointEventTool(BaseLogbookTool):
     name = "LogbookLogPointEvent"
-    description = "Record a point-in-time observation using an exact existing event type key."
+    description = (
+        "Record one point-in-time observation. Required field: event_type_key. "
+        "Optional fields: occurred_at, value, unit_key, text_value, note. Omit "
+        "every optional field the user did not provide. Omit occurred_at for "
+        "now. unit_key is optional, may only accompany value, and should be "
+        "omitted to use the event type's default unit."
+    )
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
         self.parameters = vol.Schema({
-            vol.Required("event_type_key"): vol.In(catalog.event_type_keys),
-            vol.Optional("occurred_at", description="Local ISO 8601 wall-clock time in Home Assistant timezone; omit for now. Explicit offsets are also accepted."): str,
-            vol.Optional("value"): vol.Coerce(float),
-            vol.Optional("unit_key"): vol.Any(None, vol.In(catalog.all_unit_keys)),
-            vol.Optional("text_value"): vol.Any(None, str),
-            vol.Optional("note"): vol.Any(None, str),
+            vol.Required(
+                "event_type_key", description=EVENT_TYPE_KEY_DESCRIPTION
+            ): vol.In(catalog.event_type_keys),
+            vol.Optional(
+                "occurred_at", description=NOW_OR_EXPLICIT_TIME_DESCRIPTION
+            ): str,
+            vol.Optional("value", description=OPTIONAL_VALUE_DESCRIPTION): vol.Coerce(float),
+            vol.Optional("unit_key", description=OPTIONAL_UNIT_DESCRIPTION): vol.In(
+                catalog.all_unit_keys
+            ),
+            vol.Optional("text_value", description=OPTIONAL_TEXT_DESCRIPTION): str,
+            vol.Optional("note", description=OPTIONAL_NOTE_DESCRIPTION): str,
         }, extra=vol.PREVENT_EXTRA)
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:
@@ -175,17 +215,29 @@ class LogPointEventTool(BaseLogbookTool):
 
 class StartDurationEventTool(BaseLogbookTool):
     name = "LogbookStartDurationEvent"
-    description = "Start an ongoing duration event using an exact existing event type key."
+    description = (
+        "Start one ongoing duration event. Required field: event_type_key. "
+        "Optional fields: started_at, value, unit_key, text_value, note. Omit "
+        "every optional field the user did not provide. Omit started_at for "
+        "now. unit_key is optional, may only accompany value, and should be "
+        "omitted to use the event type's default unit."
+    )
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
         self.parameters = vol.Schema({
-            vol.Required("event_type_key"): vol.In(catalog.event_type_keys),
-            vol.Optional("started_at", description="Local ISO 8601 wall-clock time in Home Assistant timezone; omit for now. Explicit offsets are also accepted."): str,
-            vol.Optional("value"): vol.Coerce(float),
-            vol.Optional("unit_key"): vol.Any(None, vol.In(catalog.all_unit_keys)),
-            vol.Optional("text_value"): vol.Any(None, str),
-            vol.Optional("note"): vol.Any(None, str),
+            vol.Required(
+                "event_type_key", description=EVENT_TYPE_KEY_DESCRIPTION
+            ): vol.In(catalog.event_type_keys),
+            vol.Optional(
+                "started_at", description=NOW_OR_EXPLICIT_TIME_DESCRIPTION
+            ): str,
+            vol.Optional("value", description=OPTIONAL_VALUE_DESCRIPTION): vol.Coerce(float),
+            vol.Optional("unit_key", description=OPTIONAL_UNIT_DESCRIPTION): vol.In(
+                catalog.all_unit_keys
+            ),
+            vol.Optional("text_value", description=OPTIONAL_TEXT_DESCRIPTION): str,
+            vol.Optional("note", description=OPTIONAL_NOTE_DESCRIPTION): str,
         }, extra=vol.PREVENT_EXTRA)
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:
@@ -210,15 +262,33 @@ class StartDurationEventTool(BaseLogbookTool):
 
 class FinishDurationEventTool(BaseLogbookTool):
     name = "LogbookFinishDurationEvent"
-    description = "Finish the newest ongoing duration event for an exact existing event type key."
+    description = (
+        "Finish the newest ongoing duration event. Required field: "
+        "event_type_key. Optional fields: ended_at, value, unit_key. Omit "
+        "ended_at for now. Omit value to preserve the event's existing value. "
+        "unit_key is optional, may only accompany value, and should be omitted "
+        "to use the event type's default unit."
+    )
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
         self.parameters = vol.Schema({
-            vol.Required("event_type_key"): vol.In(catalog.event_type_keys),
-            vol.Optional("ended_at", description="Local ISO 8601 wall-clock time in Home Assistant timezone; omit for now. Explicit offsets are also accepted."): str,
-            vol.Optional("value"): vol.Coerce(float),
-            vol.Optional("unit_key"): vol.Any(None, vol.In(catalog.all_unit_keys)),
+            vol.Required(
+                "event_type_key", description=EVENT_TYPE_KEY_DESCRIPTION
+            ): vol.In(catalog.event_type_keys),
+            vol.Optional(
+                "ended_at", description=NOW_OR_EXPLICIT_TIME_DESCRIPTION
+            ): str,
+            vol.Optional(
+                "value",
+                description=(
+                    "Optional. Final numeric measurement to set while finishing. "
+                    "Omit to preserve the event's existing numeric value."
+                ),
+            ): vol.Coerce(float),
+            vol.Optional("unit_key", description=OPTIONAL_UNIT_DESCRIPTION): vol.In(
+                catalog.all_unit_keys
+            ),
         }, extra=vol.PREVENT_EXTRA)
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:
@@ -242,12 +312,19 @@ class FinishDurationEventTool(BaseLogbookTool):
 
 class GetLatestEventTool(BaseLogbookTool):
     name = "LogbookGetLatestEvent"
-    description = "Get the latest event with its numeric value converted to the event type's default display unit, plus start, finish, ongoing state, text, and note."
+    description = (
+        "Get the latest event, including local timestamps, ongoing state, text, "
+        "note, and numeric measurement converted to the event type's default "
+        "display unit. Required field: event_type_key. There are no optional "
+        "fields."
+    )
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
         self.parameters = vol.Schema({
-            vol.Required("event_type_key"): vol.In(catalog.event_type_keys),
+            vol.Required(
+                "event_type_key", description=EVENT_TYPE_KEY_DESCRIPTION
+            ): vol.In(catalog.event_type_keys),
         }, extra=vol.PREVENT_EXTRA)
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:
@@ -262,18 +339,66 @@ class GetLatestEventTool(BaseLogbookTool):
 
 class UpdateLatestEventTool(BaseLogbookTool):
     name = "LogbookUpdateLatestEvent"
-    description = "Correct one or more fields on the latest event in a single atomic update."
+    description = (
+        "Correct the latest event in one atomic update. Required field: "
+        "event_type_key. Also provide at least one optional correction field: "
+        "started_at, value, unit_key, text_value, note, or metadata. Omitted "
+        "fields remain unchanged. value, text_value, and note may be null to "
+        "clear them. unit_key may only accompany a non-null numeric value; omit "
+        "it to use the event type's default unit."
+    )
 
     def __init__(self, client: LogbookClient, catalog: VoiceCatalog) -> None:
         super().__init__(client, catalog)
         self.parameters = vol.Schema({
-            vol.Required("event_type_key"): vol.In(catalog.event_type_keys),
-            vol.Optional("started_at", description="Local ISO 8601 wall-clock time in Home Assistant timezone. Explicit offsets are also accepted."): str,
-            vol.Optional("value"): vol.Any(None, vol.Coerce(float)),
-            vol.Optional("unit_key"): vol.Any(None, vol.In(catalog.all_unit_keys)),
-            vol.Optional("text_value"): vol.Any(None, str),
-            vol.Optional("note"): vol.Any(None, str),
-            vol.Optional("metadata"): dict,
+            vol.Required(
+                "event_type_key", description=EVENT_TYPE_KEY_DESCRIPTION
+            ): vol.In(catalog.event_type_keys),
+            vol.Optional(
+                "started_at",
+                description=(
+                    "Optional. New start time. Omit to leave the current start time "
+                    "unchanged. Use local ISO 8601 without Z or an offset-aware ISO "
+                    "8601 value."
+                ),
+            ): str,
+            vol.Optional(
+                "value",
+                description=(
+                    "Optional. New numeric value. Omit to leave unchanged; use null "
+                    "to clear the numeric value."
+                ),
+            ): vol.Any(None, vol.Coerce(float)),
+            vol.Optional(
+                "unit_key",
+                description=(
+                    "Optional. Exact compatible unit key for a non-null numeric "
+                    "value. Omit to use the event type's default unit. Do not send "
+                    "when value is omitted or null."
+                ),
+            ): vol.In(catalog.all_unit_keys),
+            vol.Optional(
+                "text_value",
+                description=(
+                    "Optional. New text measurement. Omit to leave unchanged; use "
+                    "null to clear it."
+                ),
+            ): vol.Any(None, str),
+            vol.Optional(
+                "note",
+                description=(
+                    "Optional. New note. Omit to leave unchanged; use null to clear "
+                    "it."
+                ),
+            ): vol.Any(None, str),
+            vol.Optional(
+                "metadata",
+                description=(
+                    "Optional. Replacement metadata object. Omit to leave metadata "
+                    "unchanged; supply only when the user explicitly provides "
+                    "structured metadata."
+                ),
+            ): dict,
         }, extra=vol.PREVENT_EXTRA)
 
     async def async_call(self, hass: HomeAssistant, tool_input: ToolInput, llm_context: LLMContext) -> JsonObjectType:

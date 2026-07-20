@@ -18,7 +18,7 @@ The integration validates `/api/v1/capabilities`, downloads `/api/v1/voice-catal
 
 ## Home Assistant 2026.7 conversation setup
 
-Home Assistant 2026.7 can load a prompt fragment from an integration's `llm.py` without reliably dispatching the corresponding tools. Version 0.1.5 therefore always registers a separate LLM API named **Logbook** and leaves the contributed-tool platform as a no-op.
+Home Assistant 2026.7 can load a prompt fragment from an integration's `llm.py` without reliably dispatching the corresponding tools. Version 0.1.7 therefore always registers a separate LLM API named **Logbook** and leaves the contributed-tool platform as a no-op.
 
 Open the Ollama conversation entity's configuration and select both LLM APIs:
 
@@ -77,3 +77,19 @@ Every LLM request includes Home Assistant's authoritative current local time, IA
 - Ambiguous or nonexistent local times during daylight-saving transitions are rejected unless an explicit numeric offset is supplied.
 
 Tool results also include local ISO timestamps beside the backend UTC timestamps.
+
+## Measurement display behavior in v0.1.6
+
+The backend stores numeric measurements in the unit type's canonical base unit. Tool results now make the event type's configured default unit the primary LLM measurement:
+
+- `event.measurement.value` is the converted display value.
+- `event.measurement.unitKey` and `event.measurement.unit` identify the matching display unit.
+- `event.value` mirrors the converted display value for compatibility.
+- `event.canonicalValue` and `event.canonicalMeasurement` are storage diagnostics only.
+
+The prompt explicitly tells the model never to pair `canonicalValue` with the event type's display unit.
+
+
+## Tool argument behavior in v0.1.7
+
+Every tool description and JSON schema now identifies required and optional fields explicitly. The LLM is instructed to omit unknown optional fields rather than fill them with null placeholders. `unit_key` is optional and may only accompany a numeric `value`; omitting it uses the event type's configured default unit. For `LogbookUpdateLatestEvent`, omitted fields remain unchanged, while explicit null is reserved for clearing nullable values such as `value`, `text_value`, or `note`.
