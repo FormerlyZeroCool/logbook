@@ -92,7 +92,7 @@ def test_manifest_declares_a_single_config_entry_custom_integration():
     assert manifest == {
         "domain": "event_logbook",
         "name": "Logbook Events",
-        "version": "0.1.7",
+        "version": "0.1.8",
         "config_flow": True,
         "single_config_entry": True,
         "integration_type": "service",

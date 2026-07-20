@@ -1,67 +1,89 @@
-# Logbook monorepo
+# Logbook
 
-This repository contains the complete Logbook project:
+Logbook is a self-hosted event tracker for Home Assistant. It records point-in-time observations and start/finish activities, normalizes measurements into canonical storage units, and provides a dashboard plus native LLM tools for voice logging and queries.
+
+## Repository layout
 
 ```text
 logbook/
-├── backend/                       # Fastify/TypeScript API and migrations
-├── frontend/                      # React/Vite dashboard and Nginx proxy
+├── backend/                       # Fastify API, PostgreSQL schema, OpenAPI contract
+├── frontend/                      # React dashboard and Nginx API proxy
 ├── custom_components/
 │   └── event_logbook/             # HACS-compatible Home Assistant integration
-├── brand/                         # HACS brand assets
-├── home-assistant/
-│   ├── tests/
-│   └── legacy/logbook_core_v6.yaml
-├── scripts/
-├── compose.yaml
-└── .env.example
+├── home-assistant/                # Integration tests and legacy YAML reference
+├── scripts/                       # Safe environment, deploy, backup, and packaging helpers
+├── compose.yaml                   # PostgreSQL/TimescaleDB, API, and dashboard
+├── .env.example
+└── versions.json
 ```
 
-Current component versions:
+| Component | Version |
+|---|---:|
+| Monorepo | 0.11.8 |
+| Backend | 0.11.0 |
+| Frontend | 0.13.3 |
+| Home Assistant integration | 0.1.8 |
 
-- Backend: 0.11.0
-- Frontend: 0.13.3
-- Home Assistant integration: 0.1.7
+## Features
 
-## Important environment-file rule
+- Managed event types with aliases and optional measurement dimensions.
+- Point events and ongoing duration events using separate write actions.
+- Canonical unit storage with compatible display/input units.
+- Paginated event browsing, editing, note search, and event-type filtering.
+- Time-series charts with local calendar aggregation and unit conversion.
+- Native Home Assistant LLM tools for listing, logging, starting, finishing, reading, and correcting events.
+- Idempotent authenticated writes to protect against duplicate retries.
 
-`.env` is local state and is ignored by Git. Repository scripts never overwrite it.
+## Run the stack
 
-To create it only when one does not already exist:
+The root Compose project starts PostgreSQL/TimescaleDB, the API, and the dashboard.
 
 ```bash
+git clone https://github.com/formerlyzerocool/logbook.git
+cd logbook
 ./scripts/init-env.sh
 ```
 
-If `.env` already exists, the script exits without changing it.
-
-## Run the application stack
-
-The root Compose project runs PostgreSQL/TimescaleDB, the API, and the frontend:
+`init-env.sh` creates `.env` only when it does not already exist. It never replaces an existing file. Edit the generated file, then deploy:
 
 ```bash
+nvim .env
 ./scripts/deploy-stack.sh
 ```
 
-The Home Assistant integration is source code in this repository, but it runs inside Home Assistant rather than in Docker Compose. Copy or sync:
+Default service ports are:
 
 ```text
-custom_components/event_logbook
+API:       http://<host>:8787
+Dashboard: http://<host>:8790
 ```
 
-to:
+Verify the API:
 
-```text
-/config/custom_components/event_logbook
+```bash
+curl http://<host>:8787/health
 ```
 
-Then restart Home Assistant and add **Logbook Events** under **Settings → Devices & services**.
+### Required environment values
 
-## Safe update workflow on the K11
+At minimum, set unique values for:
 
-Do not extract a release over a working checkout and do not replace `.env`.
+```dotenv
+POSTGRES_PASSWORD=replace-with-a-random-password
+API_KEY=replace-with-a-different-random-key
+```
 
-Recommended Git workflow:
+Generate secrets with:
+
+```bash
+openssl rand -hex 32
+```
+
+Set `API_BIND_ADDRESS` and `FRONTEND_BIND_ADDRESS` to an address reachable from the clients that need them. Do not expose either service directly to the public internet without authentication, TLS, and appropriate network controls.
+
+## Safe updates and backups
+
+The deployment scripts do not create or modify `.env`.
 
 ```bash
 cd ~/services/logbook/logbook
@@ -70,51 +92,60 @@ git pull --ff-only
 ./scripts/deploy-stack.sh
 ```
 
-The existing `.env` remains untouched.
+Database backups are written to `backups/` and excluded from Git. Never use `docker compose down -v` during a normal update because it removes the database volume.
 
-## Initialize the Git repository
+## Home Assistant integration
+
+Install **Logbook Events** through HACS as an Integration repository, restart Home Assistant, then add it under:
+
+```text
+Settings → Devices & services → Add integration → Logbook Events
+```
+
+Enter the backend URL and API key. For an Ollama conversation agent, select both Home Assistant APIs:
+
+```text
+Assist
+Logbook
+```
+
+Home Assistant namespaces the merged tools, so names may appear with a `Logbook__` prefix.
+
+The integration supplies the model with the current Home Assistant clock and catalog on every request. It converts write timestamps to UTC before calling the backend and converts canonical measurements into each event type's configured display unit before returning query results.
+
+Detailed installation, tool contracts, and troubleshooting are in [home-assistant/README.md](home-assistant/README.md).
+
+## Documentation
+
+- [Backend data model and API guide](backend/README.md)
+- [Complete OpenAPI contract](backend/openapi.yaml)
+- [Frontend features and development](frontend/README.md)
+- [Home Assistant integration](home-assistant/README.md)
+
+## Development checks
+
+Backend:
 
 ```bash
-cd ~/services/logbook/logbook
-git init
-git add .
-git commit -m "Initial Logbook monorepo"
+cd backend
+npm ci
+npm run check
 ```
 
-Add a private remote before pushing because the project controls personal household data, even though `.env` and database dumps are excluded.
+Frontend:
 
-## Home Assistant integration development
-
-The source of truth is:
-
-```text
-custom_components/event_logbook
+```bash
+cd frontend
+npm ci
+npm run check
 ```
 
-The domain is intentionally `event_logbook`. Home Assistant already owns the core `logbook` domain for its built-in Activity integration, so a custom component must not use that domain.
+Home Assistant integration tests:
 
-For a manual installation, copy that directory into Home Assistant's `/config/custom_components/`. During transition, the legacy YAML package remains under:
-
-```text
-home-assistant/legacy/logbook_core_v6.yaml
+```bash
+python -m pytest home-assistant/tests
 ```
 
-Do not expose both the legacy YAML voice tools and native integration tools to Assist after the integration has been accepted, because duplicate tools reduce tool-selection reliability.
+## Legacy YAML
 
-## Migrating from integration v0.1.0
-
-Integration v0.1.0 incorrectly used Home Assistant's reserved core domain `logbook`. Remove `/config/custom_components/logbook` and its custom config entry before installing v0.1.1. Then install `custom_components/event_logbook`, restart Home Assistant, and add **Logbook Events** again. The backend API key and event data do not change.
-
-
-## Home Assistant 2026.7 LLM APIs
-
-After installing the integration, configure the Ollama conversation entity to use both **Assist** and **Logbook** LLM APIs. Home Assistant 2026.7 merges them and exposes Logbook tools with a `Logbook__` prefix.
-
-
-## Home Assistant time handling
-
-The Logbook LLM API supplies every model request with Home Assistant's current local time, IANA timezone, local ISO timestamp, and UTC timestamp. Write tools normalize all event timestamps inside the integration and always send canonical UTC values to the backend. Missing timestamps mean "now" and use the Home Assistant integration clock, not the backend clock.
-
-## Home Assistant display-unit handling
-
-The native integration converts backend canonical values into each event type's configured default display unit before returning a tool result to the LLM. For example, a `feeding_jay` value stored canonically in milliliters is presented through `event.measurement` in `fl_oz_us` when that is the event type's default unit. Canonical storage values remain available under explicitly named diagnostic fields and are not used for normal voice responses.
+`home-assistant/legacy/logbook_core_v6.yaml` is retained only for existing automations and comparison during native-integration testing. Do not expose both the legacy YAML scripts and the native Logbook tools to the same Assist agent because duplicate actions reduce tool-selection reliability.
