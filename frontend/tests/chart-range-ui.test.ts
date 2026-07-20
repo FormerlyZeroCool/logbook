@@ -11,7 +11,7 @@ test('event type charts expose synchronized presets and custom date-time inputs'
   const styles = await readFile(stylesUrl, 'utf8');
 
   assert.match(page, /chartRangePresets\.map/);
-  assert.match(page, /buildPresetSelection\('7d'\)/);
+  assert.match(page, /buildPresetSelection\(DEFAULT_CHART_RANGE_PRESET\)/);
   assert.equal((page.match(/type="datetime-local"/g) ?? []).length, 2);
   assert.match(page, /aria-label="Chart start date and time"/);
   assert.match(page, /aria-label="Chart end date and time"/);

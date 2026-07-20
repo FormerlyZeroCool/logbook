@@ -14,6 +14,8 @@ export const chartRangePresets = [
 
 export type ChartRangePresetKey = typeof chartRangePresets[number]['key'];
 
+export const DEFAULT_CHART_RANGE_PRESET: ChartRangePresetKey = '2d';
+
 export type ChartTimeWindow = {
   fromMs: number;
   toMs: number;

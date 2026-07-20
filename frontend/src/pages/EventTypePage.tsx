@@ -19,6 +19,7 @@ import { getBrowserTimeZone } from '../time-zone';
 import { getSeriesBucket, type ValueAggregation } from '../value-aggregation';
 import {
   buildCustomTimeWindow,
+  DEFAULT_CHART_RANGE_PRESET,
   buildPresetTimeWindow,
   chartRangePresets,
   formatDateTimeLocal,
@@ -57,7 +58,7 @@ function buildCustomSelection(fromMs: number, toMs: number): ChartRangeSelection
 export function EventTypePage() {
   const { key = '' } = useParams();
   const decodedKey = decodeURIComponent(key);
-  const [rangeSelection, setRangeSelection] = useState<ChartRangeSelection>(() => buildPresetSelection('7d'));
+  const [rangeSelection, setRangeSelection] = useState<ChartRangeSelection>(() => buildPresetSelection(DEFAULT_CHART_RANGE_PRESET));
   const [displayUnitKey, setDisplayUnitKey] = useState('');
   const [valueAggregation, setValueAggregation] = useState<ValueAggregation>('events');
   const [actionError, setActionError] = useState<string | null>(null);

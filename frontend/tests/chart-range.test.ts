@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildCustomTimeWindow,
+  DEFAULT_CHART_RANGE_PRESET,
   buildPresetTimeWindow,
   chartRangePresets,
   formatDateTimeLocal,
@@ -10,6 +11,10 @@ import {
 } from '../src/chart-range.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+test('current event-type charts default to the two-day preset', (): void => {
+  assert.equal(DEFAULT_CHART_RANGE_PRESET, '2d');
+});
 
 test('chart range presets include the requested short and medium windows', (): void => {
   assert.deepEqual(
