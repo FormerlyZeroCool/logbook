@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export function useCurrentTime(intervalMs: number = 30_000): number {
+export function useCurrentTime(intervalMs: number = 10_000): number {
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   useEffect((): (() => void) => {

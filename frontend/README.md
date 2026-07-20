@@ -54,6 +54,8 @@ Displays:
 
 The recorded-value and time-gap curves can be toggled independently. Continuous timestamp axes preserve the real spacing between events.
 
+All active pages poll their API queries every 10 seconds, including when embedded in a Home Assistant Webpage dashboard. TanStack Query preserves structurally equal results, so the visible page updates only when returned state changes. Preset chart ranges roll forward with each refresh; custom date ranges remain fixed.
+
 ## Data behavior
 
 ### Units

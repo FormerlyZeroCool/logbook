@@ -19,6 +19,6 @@ test('Recorded values chart exposes bucket-sum aggregation controls', async (): 
   assert.match(charts, /yAxisId="interval"/);
   assert.match(charts, /orientation="right"/);
   assert.match(page, /valueAggregation/);
-  assert.match(page, /getSeriesBucket\(valueAggregation, rangeSelection\.bucket\)/);
+  assert.match(page, /getSeriesBucket\(valueAggregation, activeWindow\.bucket\)/);
   assert.match(page, /onAggregationChange=\{setValueAggregation\}/);
 });

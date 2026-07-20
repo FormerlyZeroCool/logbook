@@ -22,6 +22,10 @@ export type ChartTimeWindow = {
   bucket: string;
 };
 
+export type ChartRangeWindow = ChartTimeWindow & {
+  mode: ChartRangePresetKey | 'custom';
+};
+
 export function getDefaultSeriesBucket(fromMs: number, toMs: number): string {
   const durationMs = Math.max(0, toMs - fromMs);
   if (durationMs <= 2 * DAY_MS) return '15 minutes';
@@ -40,6 +44,17 @@ export function buildPresetTimeWindow(key: ChartRangePresetKey, nowMs: number = 
 export function buildCustomTimeWindow(fromMs: number, toMs: number): ChartTimeWindow | null {
   if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) return null;
   return { fromMs, toMs, bucket: getDefaultSeriesBucket(fromMs, toMs) };
+}
+
+export function resolveChartTimeWindow(selection: ChartRangeWindow, nowMs: number = Date.now()): ChartTimeWindow {
+  if (selection.mode === 'custom') {
+    return {
+      fromMs: selection.fromMs,
+      toMs: selection.toMs,
+      bucket: selection.bucket
+    };
+  }
+  return buildPresetTimeWindow(selection.mode, nowMs);
 }
 
 function pad(value: number): string {

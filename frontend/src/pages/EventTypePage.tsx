@@ -24,11 +24,12 @@ import {
   chartRangePresets,
   formatDateTimeLocal,
   parseDateTimeLocal,
+  resolveChartTimeWindow,
   type ChartRangePresetKey,
-  type ChartTimeWindow
+  type ChartRangeWindow
 } from '../chart-range';
 
-type ChartRangeSelection = ChartTimeWindow & {
+type ChartRangeSelection = ChartRangeWindow & {
   mode: ChartRangePresetKey | 'custom';
   fromInput: string;
   toInput: string;
@@ -84,20 +85,24 @@ export function EventTypePage() {
     queryKey: [
       'series',
       decodedKey,
-      rangeSelection.fromMs,
-      rangeSelection.toMs,
+      rangeSelection.mode,
+      rangeSelection.mode === 'custom' ? rangeSelection.fromMs : null,
+      rangeSelection.mode === 'custom' ? rangeSelection.toMs : null,
       displayUnitKey,
       valueAggregation,
       browserTimeZone
     ],
-    queryFn: (): Promise<SeriesResponse> => api.getSeries(
-      decodedKey,
-      new Date(rangeSelection.fromMs).toISOString(),
-      new Date(rangeSelection.toMs).toISOString(),
-      getSeriesBucket(valueAggregation, rangeSelection.bucket),
-      browserTimeZone,
-      displayUnitKey || undefined
-    ),
+    queryFn: (): Promise<SeriesResponse> => {
+      const activeWindow = resolveChartTimeWindow(rangeSelection);
+      return api.getSeries(
+        decodedKey,
+        new Date(activeWindow.fromMs).toISOString(),
+        new Date(activeWindow.toMs).toISOString(),
+        getSeriesBucket(valueAggregation, activeWindow.bucket),
+        browserTimeZone,
+        displayUnitKey || undefined
+      );
+    },
     enabled: Boolean(eventTypeQuery.data)
   });
   const latestEventQuery = useQuery<LogEvent>({
@@ -128,14 +133,15 @@ export function EventTypePage() {
 
   function updateCustomInput(field: 'fromInput' | 'toInput', value: string): void {
     setRangeSelection((current: ChartRangeSelection): ChartRangeSelection => {
-      const fromInput = field === 'fromInput' ? value : current.fromInput;
-      const toInput = field === 'toInput' ? value : current.toInput;
+      const editable = current.mode === 'custom' ? current : buildPresetSelection(current.mode);
+      const fromInput = field === 'fromInput' ? value : editable.fromInput;
+      const toInput = field === 'toInput' ? value : editable.toInput;
       const fromMs = parseDateTimeLocal(fromInput);
       const toMs = parseDateTimeLocal(toInput);
       const window = fromMs === null || toMs === null ? null : buildCustomTimeWindow(fromMs, toMs);
       return window
         ? { ...window, mode: 'custom', fromInput, toInput }
-        : { ...current, mode: 'custom', fromInput, toInput };
+        : { ...editable, mode: 'custom', fromInput, toInput };
     });
   }
 
@@ -165,8 +171,11 @@ export function EventTypePage() {
     }
   }
 
-  const draftFromMs = parseDateTimeLocal(rangeSelection.fromInput);
-  const draftToMs = parseDateTimeLocal(rangeSelection.toInput);
+  const visibleRangeSelection = rangeSelection.mode === 'custom'
+    ? rangeSelection
+    : buildPresetSelection(rangeSelection.mode, nowMs);
+  const draftFromMs = parseDateTimeLocal(visibleRangeSelection.fromInput);
+  const draftToMs = parseDateTimeLocal(visibleRangeSelection.toInput);
   const customRangeIsValid = draftFromMs !== null && draftToMs !== null && draftFromMs < draftToMs;
   const loading = eventTypeQuery.isPending || unitTypesQuery.isPending || eventsQuery.isPending || seriesQuery.isPending;
   const error = eventTypeQuery.error ?? unitTypesQuery.error ?? eventsQuery.error ?? seriesQuery.error;
@@ -254,8 +263,8 @@ export function EventTypePage() {
               aria-label="Chart start date and time"
               type="datetime-local"
               step="1"
-              value={rangeSelection.fromInput}
-              max={rangeSelection.toInput || undefined}
+              value={visibleRangeSelection.fromInput}
+              max={visibleRangeSelection.toInput || undefined}
               onChange={(event: ChangeEvent<HTMLInputElement>) => updateCustomInput('fromInput', event.target.value)}
             />
           </label>
@@ -265,8 +274,8 @@ export function EventTypePage() {
               aria-label="Chart end date and time"
               type="datetime-local"
               step="1"
-              value={rangeSelection.toInput}
-              min={rangeSelection.fromInput || undefined}
+              value={visibleRangeSelection.toInput}
+              min={visibleRangeSelection.fromInput || undefined}
               onChange={(event: ChangeEvent<HTMLInputElement>) => updateCustomInput('toInput', event.target.value)}
             />
           </label>
