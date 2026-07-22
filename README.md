@@ -19,9 +19,9 @@ logbook/
 
 | Component | Version |
 |---|---:|
-| Monorepo | 0.11.10 |
+| Monorepo | 0.11.12 |
 | Backend | 0.11.0 |
-| Frontend | 0.13.5 |
+| Frontend | 0.13.7 |
 | Home Assistant integration | 0.1.8 |
 
 ## Features

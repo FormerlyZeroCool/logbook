@@ -25,7 +25,7 @@
 }
 
 @layer components {
-  .app-shell { @apply min-h-screen; }
+  .app-shell { @apply flex min-h-screen flex-col; }
   .topbar { @apply sticky top-0 z-40 flex min-h-16 items-center justify-between border-b border-white/10 bg-slate-950/85 px-4 backdrop-blur-xl sm:px-6; }
   .brand { @apply flex items-center gap-3 font-bold tracking-tight text-slate-50; }
   .brand-mark { @apply grid size-9 place-items-center rounded-xl bg-gradient-to-br from-blue-500 to-violet-500 text-white shadow-lg shadow-blue-950/40; }
@@ -197,4 +197,51 @@
   .chart-aggregation-select { @apply w-full flex-none; }
   .chart-series-toggles { @apply w-full; }
   .chart-series-toggle { @apply flex-1 justify-center; }
+}
+
+@layer components {
+  .page-kiosk { @apply min-h-0 w-full max-w-none flex-1 overflow-hidden p-0; }
+  .kiosk-page { @apply h-full min-h-0 overflow-hidden bg-slate-950; }
+  .kiosk-track { @apply flex h-full min-h-0 transition-transform duration-700 ease-in-out; will-change: transform; }
+  .kiosk-slide { @apply h-full min-w-full flex-none; padding: clamp(.45rem, 1vw, 1rem); }
+  .kiosk-grid { @apply grid h-full min-h-0; gap: clamp(.45rem, 1vw, 1rem); grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .kiosk-grid-count-1 { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .kiosk-grid-count-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+  .kiosk-grid-count-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr); }
+  .kiosk-grid-count-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .kiosk-panel-link { @apply block min-h-0 min-w-0; }
+  .kiosk-panel { @apply relative flex h-full min-h-0 flex-col overflow-hidden border border-slate-800 bg-slate-900/90 shadow-2xl shadow-black/20 transition duration-200; border-radius: clamp(1rem, 1.5vw, 1.75rem); padding: clamp(.8rem, 1.35vw, 1.55rem); }
+  .kiosk-panel-link:hover .kiosk-panel { @apply -translate-y-0.5 border-slate-700; }
+  .kiosk-panel-accent { @apply absolute inset-y-0 left-0; width: clamp(.3rem, .5vw, .55rem); background: var(--accent, #60a5fa); }
+  .kiosk-panel-header { @apply flex min-w-0 items-start justify-between gap-3; padding-left: clamp(.25rem, .45vw, .55rem); }
+  .kiosk-panel-header h2 { font-size: clamp(1.65rem, 2.8vw, 3.5rem); line-height: 1.02; @apply min-w-0 truncate font-black tracking-[-0.045em] text-white; }
+  .kiosk-status { font-size: clamp(.7rem, .85vw, 1rem); padding: clamp(.25rem, .35vw, .4rem) clamp(.55rem, .8vw, .9rem); @apply shrink-0 rounded-full bg-emerald-500/15 font-bold uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-500/30; }
+  .kiosk-value { font-size: clamp(1.35rem, 2.25vw, 2.8rem); line-height: 1; padding: clamp(.45rem, .8vw, .9rem) 0 clamp(.5rem, .9vw, 1rem) clamp(.25rem, .45vw, .55rem); @apply min-w-0 truncate font-extrabold tracking-[-0.035em] text-slate-100; }
+  .kiosk-time-rows { @apply mt-auto flex min-w-0 flex-col; gap: clamp(.35rem, .65vw, .75rem); padding-left: clamp(.25rem, .45vw, .55rem); }
+  .kiosk-time-row { @apply min-w-0 border border-slate-800 bg-slate-950/55; border-radius: clamp(.7rem, 1vw, 1.1rem); padding: clamp(.6rem, .85vw, .95rem) clamp(.7rem, 1vw, 1.15rem); }
+  .kiosk-time-row span { font-size: clamp(.7rem, .9vw, 1.05rem); @apply flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-500; }
+  .kiosk-time-row span svg { width: clamp(.85rem, 1.05vw, 1.2rem); height: clamp(.85rem, 1.05vw, 1.2rem); }
+  .kiosk-time-row strong { font-size: clamp(1.2rem, 2vw, 2.35rem); line-height: 1.05; @apply mt-1 block truncate font-extrabold text-white; }
+  .kiosk-time-row small { font-size: clamp(.72rem, .9vw, 1.05rem); @apply mt-1 block truncate text-slate-500; }
+  .kiosk-note { font-size: clamp(.85rem, 1.25vw, 1.45rem); margin: 0 0 clamp(.45rem, .75vw, .85rem); padding-left: clamp(.25rem, .45vw, .55rem); @apply min-w-0 truncate font-medium leading-snug text-slate-300; }
+  .kiosk-empty { font-size: clamp(1.8rem, 4.5vw, 5rem); @apply m-auto font-bold tracking-tight text-slate-500; }
+  .kiosk-state { @apply grid h-full place-content-center gap-3 bg-slate-950 p-8 text-center font-bold text-slate-300; font-size: clamp(1.4rem, 3vw, 3rem); }
+  .kiosk-state-error span { @apply text-base font-normal text-slate-400; }
+  .kiosk-state-error button { @apply mx-auto rounded-xl bg-slate-700 px-5 py-3 text-base font-semibold text-white hover:bg-slate-600; }
+}
+
+@media (orientation: portrait) {
+  .kiosk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .kiosk-grid-count-1 { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .kiosk-grid-count-2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .kiosk-grid-count-3 { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .kiosk-grid-count-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .page-kiosk { @apply w-full p-0; }
+  .kiosk-panel-header h2 { font-size: clamp(1.35rem, 5vw, 2.15rem); }
+  .kiosk-value { font-size: clamp(1.15rem, 4.5vw, 1.8rem); }
+  .kiosk-time-row strong { font-size: clamp(1.05rem, 4vw, 1.55rem); }
+  .kiosk-time-row small { @apply hidden; }
 }

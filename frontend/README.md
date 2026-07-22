@@ -21,6 +21,10 @@ Use the root [README](../README.md) for deployment. This document describes the 
 
 Shows the three newest events for each active event type, along with time since the latest start and latest completed finish. Ongoing events do not erase the previous completed finish.
 
+### Kiosk
+
+Provides a full-screen activity view at `/kiosk` for wall displays and Home Assistant Webpage dashboards. It keeps the navigation bar, removes the normal page heading, and shows only the newest event for each active event type. Up to six responsive panels fill the available viewport; additional groups rotate automatically every 10 seconds. Each panel prioritizes the event-type name, shows a secondary latest value, places the latest start/recorded and finish times on separate full-width rows, and displays the newest event note as a single ellipsized line when present. Duration totals are intentionally omitted.
+
 ### Events
 
 Provides the complete paginated history with:
