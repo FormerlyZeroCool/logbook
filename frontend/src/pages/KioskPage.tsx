@@ -1,5 +1,4 @@
-git tag -a monorepo-v0.12.0 \
-  -m "Logbook monorepo v0.12.0: consolidated kiosk dashboard"import { useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { KioskEventTypePanel } from '../components/KioskEventTypePanel';
