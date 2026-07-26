@@ -1,6 +1,7 @@
 import { AnalysisFunctionEditor } from '@logbook/analysis-editor';
 import { analysisFunctionIdentifier, type AnalysisFunctionKind, type SourceDiagnostic } from '@logbook/analysis-sdk';
 import type { SessionFunctionDraft } from '../session-types';
+import { createClientId } from '../client-id';
 
 const FUNCTION_KINDS: readonly AnalysisFunctionKind[] = [
   'event-filter',
@@ -23,9 +24,9 @@ const DEFAULT_BODIES: Record<AnalysisFunctionKind, string> = {
 };
 
 export function createSessionFunction(kind: AnalysisFunctionKind = 'point-map'): SessionFunctionDraft {
-  const suffix = crypto.randomUUID().slice(0, 8);
+  const suffix = createClientId().replaceAll('-', '').slice(0, 8);
   return {
-    id: crypto.randomUUID(),
+    id: createClientId(),
     functionKey: `draft-${suffix}`,
     name: 'New session function',
     description: '',
