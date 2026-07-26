@@ -1,0 +1,2 @@
+import { sdkManifest } from '@logbook/analysis-sdk';
+export function SdkReferenceDrawer() { return <details className="analysis-panel"><summary>SDK reference</summary><p>Constructors: {sdkManifest.constructors.join(', ')}</p><ul>{sdkManifest.operations.map((operation) => <li key={`${operation.inputType}.${operation.methodName}`}><code>{operation.inputType}.{operation.methodName}()</code><span>{operation.description}</span></li>)}</ul></details>; }

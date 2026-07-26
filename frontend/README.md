@@ -116,3 +116,8 @@ npm run check
 ```
 
 `npm run check` runs linting, strict type checking, tests, and the production build. Frontend tests cover API headers, event actions and editing, filtering, chart timing, local calendar alignment, aggregation, tooltips, and responsive chart behavior.
+
+<!-- analysis-runtime-pr1 -->
+## Explore
+
+The dashboard adds `/explore`, `/explore/:explorationId`, `/analysis-functions`, and `/analysis-functions/:functionId`. It imports program/function editors from `@logbook/analysis-editor` and contains no Monaco configuration. Transformations never execute on the React main thread; the browser uses the shared SDK inside a bounded dedicated-worker QuickJS pool.

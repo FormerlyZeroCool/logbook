@@ -1,0 +1,16 @@
+{
+  "name": "logbook-monorepo",
+  "version": "0.13.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "packages/analysis-sdk",
+    "packages/analysis-editor"
+  ],
+  "scripts": {
+    "build": "npm run build -w @logbook/analysis-sdk && npm run build -w @logbook/analysis-editor && npm run build -w ha-timeseries-logbook-backend && npm run build -w ha-timeseries-logbook-frontend",
+    "test": "npm test -w @logbook/analysis-sdk && npm test -w @logbook/analysis-editor && npm test -w ha-timeseries-logbook-backend && npm test -w ha-timeseries-logbook-frontend",
+    "check": "npm run check -w @logbook/analysis-sdk && npm run check -w @logbook/analysis-editor && npm run check -w ha-timeseries-logbook-backend && npm run check -w ha-timeseries-logbook-frontend"
+  }
+}

@@ -1,0 +1,2 @@
+import type { SerializedScalar } from '@logbook/analysis-sdk';
+export function ScalarResult({ result }: { result: SerializedScalar }) { return <article className="analysis-scalar"><span>{result.label ?? 'Result'}</span><strong>{result.value ?? '—'}{typeof result.value === 'number' && result.unit?.symbol ? ` ${result.unit.symbol}` : ''}</strong>{result.description && <p>{result.description}</p>}</article>; }

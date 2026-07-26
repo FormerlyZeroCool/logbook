@@ -5,23 +5,35 @@ import { describe, expect, it } from 'vitest';
 const migrationDirectory = path.resolve(process.cwd(), 'migrations');
 
 describe('fresh database bootstrap', () => {
-  it('contains the initialization and voice reliability migrations', async () => {
+  it('contains the initialization, reliability, and analysis migrations', async () => {
     const files = (await readdir(migrationDirectory))
       .filter((filename: string) => filename.endsWith('.sql'))
       .sort();
-
-    expect(files).toEqual(['001_init.sql', '002_voice_reliability.sql']);
+    expect(files).toEqual([
+      '001_init.sql',
+      '002_voice_reliability.sql',
+      '003_analysis_runtime.sql'
+    ]);
   });
 
   it('defines the final schema without legacy compatibility columns', async () => {
-    const sql = await readFile(path.join(migrationDirectory, '001_init.sql'), 'utf8');
-    const reliability = await readFile(path.join(migrationDirectory, '002_voice_reliability.sql'), 'utf8');
-
+    const sql = await readFile(
+      path.join(migrationDirectory, '001_init.sql'),
+      'utf8'
+    );
+    const reliability = await readFile(
+      path.join(migrationDirectory, '002_voice_reliability.sql'),
+      'utf8'
+    );
+    const analysis = await readFile(
+      path.join(migrationDirectory, '003_analysis_runtime.sql'),
+      'utf8'
+    );
     expect(sql).toContain('CREATE TABLE unit_types');
     expect(sql).toContain('CREATE TABLE units');
     expect(sql).toContain('CREATE TABLE event_types');
     expect(sql).toContain('CREATE TABLE events');
-    expect(sql).toContain("event_kind TEXT NOT NULL");
+    expect(sql).toContain('event_kind TEXT NOT NULL');
     expect(sql).toContain('ON events (event_type_id, started_at DESC, id DESC)');
     expect(sql).not.toContain('event_mode');
     expect(sql).toContain("('energy', 'Energy'");
@@ -33,6 +45,12 @@ describe('fresh database bootstrap', () => {
     expect(sql).not.toContain('legacy_unit');
     expect(sql).not.toContain('normalize_event_value');
     expect(reliability).toContain('voice_aliases');
-    expect(reliability).toContain('CREATE TABLE IF NOT EXISTS idempotency_requests');
+    expect(reliability).toContain(
+      'CREATE TABLE IF NOT EXISTS idempotency_requests'
+    );
+    expect(analysis).toContain('CREATE TABLE analysis_programs');
+    expect(analysis).toContain('CREATE TABLE analysis_program_revisions');
+    expect(analysis).toContain('CREATE TABLE analysis_functions');
+    expect(analysis).toContain('CREATE TABLE explorations');
   });
 });

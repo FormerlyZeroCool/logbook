@@ -227,3 +227,8 @@ npm run check
 ```
 
 `npm run check` runs linting, strict type checking, tests, and a production build. The test suite covers conversion, validation, CRUD constraints, event mutation, latest-event behavior, series aggregation, voice endpoints, and idempotency.
+
+<!-- analysis-runtime-pr1 -->
+## Analysis API and limits
+
+Analysis programs, reusable function revisions, and Explore workspaces are exposed under `/api/v1/analysis` and `/api/v1/explorations`. Runtime limits are configured with the documented `ANALYSIS_*` environment variables and resolved values are returned by `/api/v1/capabilities`.
