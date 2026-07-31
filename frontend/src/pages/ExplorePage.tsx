@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   analysisFunctionIdentifier,
+  analysisFunctionPropertyIdentifier,
   generateProgramBody,
   type AnalysisFunctionKind,
   type AnalysisValidationReport,
@@ -10,7 +11,7 @@ import {
   typeCheckPipeline,
 } from '@logbook/analysis-sdk';
 import { AnalysisProgramEditor } from '@logbook/analysis-editor';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { FunctionBindingEditor } from '../analysis/editor/FunctionBindingEditor';
@@ -76,7 +77,19 @@ function useDebounced<T>(value: T, delay: number): T {
 
 function bodyReferences(sourceBody: string, functionKey: string): boolean {
   const alias = analysisFunctionIdentifier(functionKey);
-  return new RegExp(`\\b${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(sourceBody);
+  const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedAlias = escapeRegExp(alias);
+  const escapedProperty = escapeRegExp(analysisFunctionPropertyIdentifier(functionKey));
+  return new RegExp(`\\b${escapedAlias}\\b`).test(sourceBody)
+    || new RegExp(`\\budf\\s*\\.\\s*${escapedProperty}\\b`).test(sourceBody)
+    || sourceBody.includes(`udf[${JSON.stringify(functionKey)}]`)
+    || sourceBody.includes(`udf['${functionKey.replaceAll("'", "\\'")}']`);
+}
+
+
+
+function preferredSavedRevisionId(item: AnalysisFunctionSummary): string | null {
+  return item.published_revision_id ?? item.draft_revision_id;
 }
 
 function toSessionSummary(draft: SessionFunctionDraft): AnalysisFunctionSummary {
@@ -215,6 +228,8 @@ export function ExplorePage() {
   );
   const activePipeline = checkedPipeline.definition ?? pipeline;
   const sourceBody = mode === 'pipeline' ? generateProgramBody(activePipeline) : code;
+  const sourceBodyRef = useRef(sourceBody);
+  sourceBodyRef.current = sourceBody;
   const debouncedSource = useDebounced(sourceBody, 500);
   const debouncedInputs = useDebounced(inputs, 500);
   const sourceDiagnostics = mode === 'pipeline' ? checkedPipeline.diagnostics : editorDiagnostics;
@@ -250,7 +265,7 @@ export function ExplorePage() {
     return Promise.all(keys.map(async (key) => {
       const local = localFunctions.find((item) => item.functionKey === key);
       if (local) {
-        const sourceMatchesLibrary = Boolean(local.libraryRevisionId && local.librarySourceBody === local.sourceBody);
+        const sourceMatchesLibrary = Boolean(local.libraryPublished && local.libraryRevisionId && local.librarySourceBody === local.sourceBody);
         return {
           key,
           alias: analysisFunctionIdentifier(key),
@@ -261,17 +276,20 @@ export function ExplorePage() {
         };
       }
       const summary = (functions.data ?? []).find((item) => item.function_key === key);
-      if (!summary?.published_revision_id) throw new Error(`Function ${key} has no published revision`);
+      if (!summary) throw new Error(`Function ${key} is not in the available function catalog`);
       const detail = await api.getAnalysisFunction(summary.id) as { revisions?: Array<{ id: string; source_body: string }> };
-      const revision = detail.revisions?.find((item) => item.id === summary.published_revision_id);
-      if (!revision) throw new Error(`Published revision for ${key} could not be loaded`);
+      const preferredRevisionId = preferredSavedRevisionId(summary);
+      const revision = preferredRevisionId
+        ? detail.revisions?.find((item) => item.id === preferredRevisionId)
+        : detail.revisions?.[0];
+      if (!revision) throw new Error(`Function ${key} is listed but has no saved revision to execute`);
       return {
         key,
         alias: analysisFunctionIdentifier(key),
         functionKind: summary.function_kind,
         sourceBody: revision.source_body,
         options: {},
-        functionRevisionId: revision.id,
+        ...(summary.published_revision_id === revision.id ? { functionRevisionId: revision.id } : {}),
       };
     }));
   }
@@ -321,10 +339,10 @@ export function ExplorePage() {
       const range = rangeMode === 'rolling' ? rollingRange() : fixedRange;
       return executeAnalysis({
         panelKey: explorationId ?? 'new-exploration',
-        sourceBody: debouncedSource,
+        sourceBody: sourceBodyRef.current,
         query: buildExploreQuery(debouncedInputs, range),
         capabilities: capabilities.data.analysis,
-        functionBindings: bindings.map(({ functionRevisionId: _revisionId, key: _key, ...binding }) => binding),
+        functionBindings: bindings.map(({ functionRevisionId: _revisionId, key, ...binding }) => ({ ...binding, functionKey: key })),
       });
     },
     onSuccess: (response) => {
@@ -353,7 +371,7 @@ export function ExplorePage() {
       const bindings = await resolveBindings();
       const unresolved = bindings.filter((binding) => !binding.functionRevisionId);
       if (unresolved.length) {
-        throw new Error(`Save these session UDFs to the function library before creating a program revision: ${unresolved.map((item) => item.key).join(', ')}`);
+        throw new Error(`Publish these UDFs as passed library revisions before creating a program revision: ${unresolved.map((item) => item.key).join(', ')}`);
       }
       const persisted = await persistWorkspace();
       const revision = await api.createAnalysisRevision(persisted.programId, {
@@ -480,16 +498,18 @@ export function ExplorePage() {
         </div>
         {mode === 'pipeline'
           ? <PipelineEditor definition={activePipeline} functions={functionCatalog} onChange={setPipeline} />
-          : <AnalysisProgramEditor
-              sourceBody={code}
-              onSourceBodyChange={setCode}
-              inputAliases={inputs.map((input) => input.alias)}
-              functionBindings={functionCatalog.filter((item) => item.published_revision_id).map((item) => ({ alias: analysisFunctionIdentifier(item.function_key), functionKind: item.function_kind }))}
-              onTypeDiagnosticsChange={setEditorDiagnostics}
-              modelKey={explorationId ?? 'new-exploration'}
-              onRunShortcut={() => { if (!execute.isPending && !sourceDiagnostics.some((diagnostic) => diagnostic.severity === 'error')) execute.mutate(); }}
-              onSaveShortcut={() => { if (!saveWorkspace.isPending) saveWorkspace.mutate(); }}
-            />}
+          : functions.isPending
+            ? <section className="analysis-panel"><p>Loading saved UDF declarations…</p></section>
+            : <AnalysisProgramEditor
+                sourceBody={code}
+                onSourceBodyChange={(nextCode) => { sourceBodyRef.current = nextCode; setCode(nextCode); }}
+                inputAliases={inputs.map((input) => input.alias)}
+                functionBindings={functionCatalog.map((item) => ({ alias: analysisFunctionIdentifier(item.function_key), functionKey: item.function_key, functionKind: item.function_kind }))}
+                onTypeDiagnosticsChange={setEditorDiagnostics}
+                modelKey={explorationId ?? 'new-exploration'}
+                onRunShortcut={() => { if (!execute.isPending && !sourceDiagnostics.some((diagnostic) => diagnostic.severity === 'error')) execute.mutate(); }}
+                onSaveShortcut={() => { if (!saveWorkspace.isPending) saveWorkspace.mutate(); }}
+              />}
         <SessionFunctionWorkbench
           functions={localFunctions}
           selectedId={selectedLocalFunctionId}

@@ -7,6 +7,14 @@ const input = {
 };
 
 describe('analysis SDK', () => {
+  it('maps immutable points ergonomically with mapPoints', () => {
+    const series = new EventSeries(input, 1_000_000).values();
+    const output = series.mapPoints((point) => point.withValue((point.value ?? 0) * 2));
+    expect(output.points.map((point) => point.value)).toEqual([0, 2, 0, -2, 4, 0]);
+    expect(output.points[1]?.eventId).toBe(series.points[1]?.eventId);
+    expect(output.points[1]).not.toBe(series.points[1]);
+    expect(() => series.mapPoints(() => ({ value: 1 }) as never)).toThrow(/NumericPoint/);
+  });
   it('preserves zero through map and explicit mapFilter keep', () => {
     const series = new EventSeries(input, 1_000_000).values();
     expect(series.map((value) => value).points.filter((point) => point.value === 0)).toHaveLength(3);
@@ -20,5 +28,17 @@ describe('analysis SDK', () => {
   it('reduces visible rows by default', () => {
     const scalar = new EventSeries(input, 1_000_000).values().sum();
     expect(scalar.value).toBe(2);
+  });
+
+  it('maps non-null values ergonomically and preserves null points', () => {
+    const series = new EventSeries({
+      ...input,
+      events: [
+        { ...input.events[0]!, displayValue: 2 },
+        { ...input.events[1]!, displayValue: null },
+        { ...input.events[2]!, displayValue: -3 },
+      ],
+    }, 1_000_000).values();
+    expect(series.map((value) => value * 1000).points.map((point) => point.value)).toEqual([2000, null, -3000]);
   });
 });

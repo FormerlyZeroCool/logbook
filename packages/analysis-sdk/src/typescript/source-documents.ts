@@ -21,6 +21,15 @@ export function analysisFunctionIdentifier(functionKey: string): string {
   return `fn_${stem}_${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
+/** Stable, collision-free property name for dot access on the public `udf` object. */
+export function analysisFunctionPropertyIdentifier(functionKey: string): string {
+  const encoded = functionKey
+    .replaceAll('-', '$')
+    .replace(/[^A-Za-z0-9_$]/g, (character) => `$${character.codePointAt(0)!.toString(16)}$`);
+  if (!encoded) return '$udf';
+  return /^[A-Za-z_$]/.test(encoded) ? encoded : `$${encoded}`;
+}
+
 function indentBody(body: string): string {
   return body.split('\n').map((line) => line.length ? `  ${line}` : '').join('\n');
 }

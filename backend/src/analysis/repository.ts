@@ -220,17 +220,17 @@ export class AnalysisRepository {
     return row ? { id: row.id, functionKey: row.function_key, functionKind: row.function_kind, isSystem: row.is_system } : null;
   }
 
-  async resolveFunctionBindings(bindings: FunctionBindingDraft[]): Promise<Array<FunctionBindingDraft & { functionKind: string; sourceBody: string }>> {
-    const resolved: Array<FunctionBindingDraft & { functionKind: string; sourceBody: string }> = [];
+  async resolveFunctionBindings(bindings: FunctionBindingDraft[]): Promise<Array<FunctionBindingDraft & { functionKey: string; functionKind: string; sourceBody: string }>> {
+    const resolved: Array<FunctionBindingDraft & { functionKey: string; functionKind: string; sourceBody: string }> = [];
     for (const binding of bindings) {
-      const result = await this.db.query<{ function_kind: string; source_body: string }>(`
-        SELECT f.function_kind,fr.source_body
+      const result = await this.db.query<{ function_key: string; function_kind: string; source_body: string }>(`
+        SELECT f.function_key,f.function_kind,fr.source_body
         FROM analysis_function_revisions fr JOIN analysis_functions f ON f.id=fr.function_id
         WHERE fr.id=$1 AND fr.validation_status='passed' AND f.published_revision_id=fr.id
       `, [binding.functionRevisionId]);
       const row = result.rows[0];
       if (!row) throw new Error(`Function binding ${binding.alias} must reference a published passed revision`);
-      resolved.push({ ...binding, functionKind: row.function_kind, sourceBody: row.source_body });
+      resolved.push({ ...binding, functionKey: row.function_key, functionKind: row.function_kind, sourceBody: row.source_body });
     }
     return resolved;
   }

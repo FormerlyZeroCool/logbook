@@ -35,6 +35,7 @@ const querySchema = z.object({
 });
 const bindingSchema = z.object({
   alias,
+  functionKey: z.string().min(1).max(64).optional(),
   functionRevisionId: uuid,
   functionKind: z.enum([
     'event-filter',
@@ -87,6 +88,7 @@ const functionKind = z.enum([
 
 type ParsedBinding = {
   alias: string;
+  functionKey?: string;
   functionRevisionId: string;
   functionKind: AnalysisFunctionKind;
   sourceBody: string;
@@ -198,6 +200,7 @@ export async function registerAnalysisRoutes(
       inputAliases: body.inputAliases,
       functionBindings: body.functionBindings.map((item: ParsedBinding) => ({
         alias: item.alias,
+        ...(item.functionKey === undefined ? {} : { functionKey: item.functionKey }),
         functionKind: item.functionKind,
         sourceBody: item.sourceBody,
         ...(item.options === undefined ? {} : { options: item.options })
@@ -282,6 +285,7 @@ export async function registerAnalysisRoutes(
       functionBindings: resolvedBindings.map(
         (item: ResolvedFunctionBinding) => ({
           alias: item.alias,
+          functionKey: item.functionKey,
           functionKind: item.functionKind as AnalysisFunctionKind,
           sourceBody: item.sourceBody,
           ...(item.options === undefined ? {} : { options: item.options })
@@ -432,6 +436,7 @@ export async function registerAnalysisRoutes(
       inputAliases: ['event'],
       functionBindings: [{
         alias: runtimeAlias,
+        functionKey: definition.functionKey,
         functionKind: actualKind,
         sourceBody: body.sourceBody
       }]

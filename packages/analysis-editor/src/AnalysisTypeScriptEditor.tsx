@@ -1,6 +1,6 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
-import type { SourceDiagnostic } from '@logbook/analysis-sdk';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { AnalysisSourceDocument, SourceDiagnostic } from '@logbook/analysis-sdk';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { markerToSourceDiagnostic } from './diagnostics.js';
 import { configureAnalysisTypeScript } from './monaco/configure-typescript.js';
 import { retainAnalysisEditorLibrary } from './monaco/extra-library-registry.js';
@@ -11,6 +11,35 @@ ensureAnalysisMonacoEnvironment();
 
 function sanitizeModelKey(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]/g, '_');
+}
+
+type HiddenAreasCapableEditor = import('monaco-editor').editor.IStandaloneCodeEditor & {
+  // Monaco 0.52 exposes this at runtime, but omits it from IStandaloneCodeEditor.
+  setHiddenAreas(ranges: readonly import('monaco-editor').Range[]): void;
+};
+
+function setEditorHiddenAreas(
+  editor: import('monaco-editor').editor.IStandaloneCodeEditor,
+  ranges: readonly import('monaco-editor').Range[],
+): void {
+  const hiddenAreasEditor = editor as HiddenAreasCapableEditor;
+  hiddenAreasEditor.setHiddenAreas(ranges);
+}
+
+function generatedDecorationRanges(sourceDocument: AnalysisSourceDocument, lineCount: number): import('monaco-editor').Range[] {
+  const ranges: import('monaco-editor').Range[] = [];
+  if (sourceDocument.bodyStartLine > 1) {
+    ranges.push(new monaco.Range(1, 1, sourceDocument.bodyStartLine - 1, 1));
+  }
+  if (sourceDocument.bodyEndLine < lineCount) {
+    ranges.push(new monaco.Range(sourceDocument.bodyEndLine + 1, 1, lineCount, 1));
+  }
+  return ranges;
+}
+
+function generatedFunctionStartLine(sourceDocument: AnalysisSourceDocument): number {
+  const index = sourceDocument.text.split('\n').findIndex((line) => line.startsWith('function '));
+  return index < 0 ? sourceDocument.bodyStartLine : index + 1;
 }
 
 export function AnalysisTypeScriptEditor({
@@ -33,11 +62,17 @@ export function AnalysisTypeScriptEditor({
   const sourceDocument = useMemo(() => document.build(sourceBody), [document, sourceBody]);
   const [editorText, setEditorText] = useState(sourceDocument.text);
   const [wrapperModified, setWrapperModified] = useState(false);
+  const [showUdfDeclaration, setShowUdfDeclaration] = useState(false);
   const [typeDiagnostics, setTypeDiagnostics] = useState<SourceDiagnostic[]>([]);
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
+  const generatedDecorationsRef = useRef<import('monaco-editor').editor.IEditorDecorationsCollection | null>(null);
+  const sourceDocumentRef = useRef(sourceDocument);
+
   const documentKeyRef = useRef(document.key);
   const saveShortcutRef = useRef(onSaveShortcut);
   const runShortcutRef = useRef(onRunShortcut);
+
+  sourceDocumentRef.current = sourceDocument;
 
   useEffect(() => { saveShortcutRef.current = onSaveShortcut; }, [onSaveShortcut]);
   useEffect(() => { runShortcutRef.current = onRunShortcut; }, [onRunShortcut]);
@@ -56,23 +91,51 @@ export function AnalysisTypeScriptEditor({
     return () => { for (const release of releases) release(); };
   }, [document]);
 
+  const applyGeneratedPresentation = useCallback((
+    editor: import('monaco-editor').editor.IStandaloneCodeEditor,
+  ): void => {
+    const lineCount = editor.getModel()?.getLineCount() ?? sourceDocument.bodyEndLine;
+    const decorationRanges = generatedDecorationRanges(sourceDocument, lineCount);
+    const hiddenUdfRanges = (sourceDocument.hiddenGeneratedRanges ?? []).map((range) => new monaco.Range(
+      range.startLineNumber,
+      1,
+      range.endLineNumber,
+      1,
+    ));
+    const hoverMessage = { value: document.generatedRegionMessage ?? 'Generated wrapper; only the body is persisted.' };
+    const decorations = decorationRanges.map((range) => ({
+      range,
+      options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
+    }));
+    if (generatedDecorationsRef.current) generatedDecorationsRef.current.set(decorations);
+    else generatedDecorationsRef.current = editor.createDecorationsCollection(decorations);
+    setEditorHiddenAreas(editor, showUdfDeclaration ? [] : hiddenUdfRanges);
+    if (!showUdfDeclaration) editor.revealLineNearTop(generatedFunctionStartLine(sourceDocument));
+  }, [document.generatedRegionMessage, showUdfDeclaration, sourceDocument]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const frame = window.requestAnimationFrame(() => applyGeneratedPresentation(editor));
+    return () => window.cancelAnimationFrame(frame);
+  }, [applyGeneratedPresentation]);
+
+  useEffect(() => () => generatedDecorationsRef.current?.clear(), []);
+
   const handleMount: OnMount = (editor) => {
     editorRef.current = editor;
-    const bodyStart = sourceDocument.bodyStartLine;
-    const bodyEnd = sourceDocument.bodyEndLine;
-    const lineCount = editor.getModel()?.getLineCount() ?? bodyEnd + 1;
-    const hoverMessage = { value: document.generatedRegionMessage ?? 'Generated wrapper; only the body is persisted.' };
-
-    editor.createDecorationsCollection([
-      {
-        range: new monaco.Range(1, 1, Math.max(1, bodyStart - 1), 1),
-        options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
-      },
-      {
-        range: new monaco.Range(bodyEnd + 1, 1, lineCount, 1),
-        options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
-      },
-    ]);
+    applyGeneratedPresentation(editor);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, () => {
+      const currentDocument = sourceDocumentRef.current;
+      const model = editor.getModel();
+      const endColumn = model?.getLineMaxColumn(currentDocument.bodyEndLine) ?? 1;
+      editor.setSelection(new monaco.Selection(
+        currentDocument.bodyStartLine,
+        1,
+        currentDocument.bodyEndLine,
+        endColumn,
+      ));
+    });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveShortcutRef.current?.());
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runShortcutRef.current?.());
   };
@@ -91,14 +154,23 @@ export function AnalysisTypeScriptEditor({
     onSourceBodyChange(body);
   };
 
+  const hasUdfDeclaration = (sourceDocument.hiddenGeneratedRanges?.length ?? 0) > 0;
   const allDiagnostics = [...typeDiagnostics, ...diagnostics];
   const errorCount = allDiagnostics.filter((item) => item.severity === 'error').length;
   const warningCount = allDiagnostics.filter((item) => item.severity === 'warning').length;
   const rootClassName = ['logbook-analysis-editor', className].filter(Boolean).join(' ');
 
-  return <div className={rootClassName}>
+  return <div className={rootClassName} data-udf-declaration={hasUdfDeclaration ? (showUdfDeclaration ? 'visible' : 'hidden') : 'absent'}>
     <div className="logbook-analysis-editor-toolbar">
       <span><strong>{toolbarLabel}</strong> · strict · browser language service · ⌘/Ctrl+S save · ⌘/Ctrl+Enter run</span>
+      {hasUdfDeclaration && <label className="logbook-analysis-editor-generated-toggle">
+        <input
+          type="checkbox"
+          checked={showUdfDeclaration}
+          onChange={(event) => setShowUdfDeclaration(event.target.checked)}
+        />
+        Show generated udf object
+      </label>}
       <span className="logbook-analysis-editor-diagnostic-count">{errorCount} errors · {warningCount} warnings</span>
       <button type="button" onClick={() => void editorRef.current?.getAction('editor.action.formatDocument')?.run()} disabled={readOnly}>Format</button>
       {wrapperModified && <button type="button" onClick={() => { setEditorText(sourceDocument.text); setWrapperModified(false); }}>Reset generated signature</button>}
@@ -124,6 +196,7 @@ export function AnalysisTypeScriptEditor({
         stickyScroll: { enabled: true },
         fontSize: 14,
         lineHeight: 22,
+        lineNumbers: 'on',
         tabSize: 2,
         insertSpaces: true,
         formatOnPaste: true,

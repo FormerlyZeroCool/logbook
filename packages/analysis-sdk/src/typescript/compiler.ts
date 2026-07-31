@@ -1,10 +1,11 @@
 import * as ts from 'typescript';
 import type { AnalysisFunctionKind, SourceDiagnostic } from '../contracts.js';
 import { ANALYSIS_SDK_DECLARATIONS } from './type-declarations.js';
-import { buildFunctionSourceDocument, buildProgramSourceDocument } from './source-documents.js';
+import { analysisFunctionPropertyIdentifier, buildFunctionSourceDocument, buildProgramSourceDocument } from './source-documents.js';
 
 export type AnalysisSourceBinding = {
   alias: string;
+  functionKey?: string;
   functionKind: AnalysisFunctionKind;
   sourceBody: string;
 };
@@ -67,7 +68,15 @@ function toDiagnostic(diagnostic: ts.Diagnostic, sourceFileName: string): Source
 
 function sourceBundle(sourceBody: string, inputAliases: readonly string[], bindings: readonly AnalysisSourceBinding[]): string {
   const functionSources = bindings.map((binding) => buildFunctionSourceDocument(binding.sourceBody, binding.functionKind, binding.alias).text).join('\n');
-  return `${functionSources}${functionSources ? '\n' : ''}${buildProgramSourceDocument(sourceBody, inputAliases).text}`;
+  const namespaceEntries = bindings.flatMap((binding) => {
+    const functionKey = binding.functionKey ?? binding.alias;
+    const propertyKey = analysisFunctionPropertyIdentifier(functionKey);
+    const entries = [`${propertyKey}: ${binding.alias}`];
+    if (propertyKey !== functionKey) entries.push(`${JSON.stringify(functionKey)}: ${binding.alias}`);
+    return entries;
+  });
+  const namespaceSource = `const udf = Object.freeze({${namespaceEntries.join(',')}});`;
+  return `${functionSources}${functionSources ? '\n' : ''}${namespaceSource}\n${buildProgramSourceDocument(sourceBody, inputAliases).text}`;
 }
 
 function transpile(source: string, fileName: string): AnalysisCompilationResult {

@@ -2,6 +2,7 @@ import type { AnalysisFunctionKind, AnalysisSourceDocument, SourceDiagnostic } f
 
 export type AnalysisEditorFunctionBinding = {
   alias: string;
+  functionKey?: string;
   functionKind: AnalysisFunctionKind;
 };
 
@@ -10,9 +11,18 @@ export type AnalysisEditorExtraLibrary = {
   content: string;
 };
 
+export type AnalysisEditorLineRange = {
+  startLineNumber: number;
+  endLineNumber: number;
+};
+
+export type AnalysisEditorSourceDocument = AnalysisSourceDocument & {
+  hiddenGeneratedRanges?: readonly AnalysisEditorLineRange[];
+};
+
 export type AnalysisEditorDocumentAdapter = {
   key: string;
-  build(sourceBody: string): AnalysisSourceDocument;
+  build(sourceBody: string): AnalysisEditorSourceDocument;
   extract(sourceText: string): string | null;
   extraLibraries?: readonly AnalysisEditorExtraLibrary[];
   generatedRegionMessage?: string;

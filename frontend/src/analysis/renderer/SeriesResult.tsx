@@ -24,12 +24,8 @@ function TooltipContent({
       <span>Value: {point.value ?? '—'}</span>
       {point.textValue && <span>Text: {point.textValue}</span>}
       {point.note && <span>Note: {point.note}</span>}
-      {point.startedAt && (
-        <span>Started: {new Date(point.startedAt).toLocaleString()}</span>
-      )}
-      {point.endedAt && (
-        <span>Ended: {new Date(point.endedAt).toLocaleString()}</span>
-      )}
+      {point.startedAt && <span>Started: {new Date(point.startedAt).toLocaleString()}</span>}
+      {point.endedAt && <span>Ended: {new Date(point.endedAt).toLocaleString()}</span>}
     </div>
   );
 }
@@ -44,36 +40,21 @@ function formatAxisTime(value: unknown): string {
 
 export function SeriesResult({ result }: { result: SerializedSeries }) {
   const data = result.points.map((point) => ({ ...point, x: point.timeMs }));
+  const serializedValues = JSON.stringify(result.points.map((point) => point.value));
   return (
     <article className="analysis-series">
       <header>
         <h3>{result.label}</h3>
-        <span>
-          {result.points.length} points
-          {result.unit?.symbol ? ` · ${result.unit.symbol}` : ''}
-        </span>
+        <span>{result.points.length} points{result.unit?.symbol ? ` · ${result.unit.symbol}` : ''}</span>
       </header>
-      <div className="analysis-chart">
+      <div className="analysis-chart" data-analysis-values={serializedValues}>
         <ResponsiveContainer width="100%" height={320}>
           <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis
-              dataKey="x"
-              type="number"
-              domain={['dataMin', 'dataMax']}
-              scale="time"
-              tickFormatter={formatAxisTime}
-            />
+            <XAxis dataKey="x" type="number" domain={['dataMin', 'dataMax']} scale="time" tickFormatter={formatAxisTime} />
             <YAxis domain={['auto', 'auto']} />
             <Tooltip content={<TooltipContent />} />
-            <Line
-              type="monotone"
-              dataKey="value"
-              name={result.label}
-              connectNulls={false}
-              isAnimationActive={false}
-              dot={{ r: 3, strokeWidth: 1 }}
-            />
+            <Line type="monotone" dataKey="value" name={result.label} connectNulls={false} isAnimationActive={false} dot={{ r: 3, strokeWidth: 1 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

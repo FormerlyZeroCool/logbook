@@ -1,5 +1,5 @@
 import type { AnalysisFunctionKind } from '../contracts.js';
-import { functionBindingDeclaration } from './source-documents.js';
+import { analysisFunctionPropertyIdentifier, functionBindingDeclaration } from './source-documents.js';
 
 export const ANALYSIS_SDK_DECLARATIONS = `
 type AnalysisResult = ScalarValue | NumericSeries | SeriesSet;
@@ -7,7 +7,8 @@ type AnalysisOptions = Readonly<Record<string, any>>;
 type SeriesScope = 'visible' | 'all';
 type DurationUnit = 'milliseconds' | 'seconds' | 'minutes' | 'hours';
 type WindowAlignment = 'trailing' | 'centered' | 'leading';
-type NumericMapper = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => number | null;
+type NumericMapper = (value: number, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => number | null;
+type NumericPointMapper = (point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
 type NumericPredicate = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => boolean;
 type NumericMapFilter = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => MapFilterResult;
 type WindowTransformer = (window: NumericWindow, options: AnalysisOptions, context: AnalysisContext) => number | null;
@@ -102,6 +103,8 @@ declare class NumericSeries {
   readonly unit: UnitDescriptor | null;
   /** Transform each point value while preserving timestamps and metadata. Returning undefined, NaN, or Infinity is invalid. */
   map(mapper: NumericMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  /** Transform an entire immutable point. Return point.withValue(...) to preserve metadata ergonomically. */
+  mapPoints(mapper: NumericPointMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Keep a point only when the predicate returns true. Numeric zero is never treated as false automatically. */
   filter(predicate: NumericPredicate, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Transform and explicitly keep or drop a point using MapFilterResult. */
@@ -179,6 +182,20 @@ declare const process: never;
 declare const require: never;
 `;
 
-export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind }[]): string {
-  return bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias)).join('\n');
+export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind; functionKey?: string }[]): string {
+  const legacyDeclarations = bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias));
+  const objectEntries = bindings.flatMap((binding) => {
+    const functionKey = binding.functionKey ?? binding.alias;
+    const propertyKey = analysisFunctionPropertyIdentifier(functionKey);
+    const entries = [
+      `  /** Saved UDF: ${functionKey} */`,
+      `  ${propertyKey}: ${binding.alias},`,
+    ];
+    if (propertyKey !== functionKey) entries.push(`  ${JSON.stringify(functionKey)}: ${binding.alias},`);
+    return entries;
+  });
+  const udfObject = objectEntries.length
+    ? `const udf = Object.freeze({\n${objectEntries.join('\n')}\n});`
+    : 'const udf = Object.freeze({});';
+  return [...legacyDeclarations, udfObject].join('\n');
 }

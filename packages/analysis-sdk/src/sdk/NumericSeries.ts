@@ -6,7 +6,8 @@ import { NumericWindow } from './NumericWindow.js';
 import { ScalarValue } from './ScalarValue.js';
 
 export type SeriesScope = 'visible' | 'all';
-export type Mapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
+export type Mapper = (value: number, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
+export type PointMapper = (point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
 export type Predicate = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => boolean;
 export type MapFilterMapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => MapFilterResult;
 export type WindowMapper = (window: NumericWindow, options: Record<string, unknown>, context: unknown) => number | null;
@@ -39,7 +40,20 @@ export class NumericSeries {
   }
 
   map(mapper: Mapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
-    return new NumericSeries(this.points.map((point, index) => point.withValue(assertFiniteNumber(mapper(point.value, point, index, options, context), 'map'))), this.label, this.unit, this.key);
+    return new NumericSeries(this.points.map((point, index) => point.value === null
+      ? point
+      : point.withValue(assertFiniteNumber(mapper(point.value, point, index, options, context), 'map'))), this.label, this.unit, this.key);
+  }
+
+  mapPoints(mapper: PointMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+    return new NumericSeries(this.points.map((point, index) => {
+      const mapped = mapper(point, index, options, context);
+      if (!(mapped instanceof NumericPoint)) {
+        throw new AnalysisRuntimeError('invalid_point_map_result', 'mapPoints must return a NumericPoint, usually point.withValue(...)');
+      }
+      assertFiniteNumber(mapped.value, 'mapPoints');
+      return mapped;
+    }), this.label, this.unit, this.key);
   }
 
   filter(predicate: Predicate, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
