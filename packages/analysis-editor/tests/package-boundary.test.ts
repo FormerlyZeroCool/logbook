@@ -37,7 +37,16 @@ test('the public API exposes generic and analysis-specific adapters', () => {
   assert.match(index, /AnalysisProgramEditor/);
   assert.match(index, /AnalysisFunctionEditor/);
   assert.match(index, /createProgramEditorDocument/);
-  assert.match(read('src/document-adapters.ts'), /export \{\};/);
+  assert.match(
+    read('src/document-adapters.ts'),
+    /export function createProgramEditorDocument/,
+  );
+  assert.match(
+    read('src/document-adapters.ts'),
+    /export function createFunctionEditorDocument/,
+  );
+  assert.match(read('src/document-adapters.ts'), /extraLibraries:/);
+  assert.match(read('src/document-adapters.ts'), /generatedDeclarations:/);
 });
 
 test('package source has no frontend application imports', () => {
