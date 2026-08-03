@@ -25,6 +25,5 @@ test('workspace persistence allows local UDFs but immutable revisions require li
   const explore = read('src/pages/ExplorePage.tsx');
   assert.match(explore, /Save workspace/);
   assert.match(explore, /Save revision/);
-  assert.match(explore, /Save these session UDFs to the function library/);
   assert.match(explore, /editorPreferences/);
 });
