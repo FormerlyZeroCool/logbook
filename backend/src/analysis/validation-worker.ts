@@ -25,10 +25,11 @@ function __serializeSeries(series) {
     unit: series.unit ?? null, points: series.points.filter((point) => point.inRequestedRange).map(__serializePoint) };
 }
 function __serializeResult(result) {
+  if (typeof result === 'number' || typeof result === 'string' || result === null) return { kind: 'scalar', value: result, label: null, unit: null, description: null };
   if (result instanceof ScalarValue) return { kind: 'scalar', value: result.value, label: result.label, unit: result.unit, description: result.description };
   if (result instanceof NumericSeries) return __serializeSeries(result);
   if (result instanceof SeriesSet) return { kind: 'series-set', title: result.title, series: result.series.map(__serializeSeries) };
-  throw new Error('Program must return ScalarValue, NumericSeries, or SeriesSet');
+  throw new Error('Program must return a number, string, null, ScalarValue, NumericSeries, or SeriesSet');
 }`;
 
 function executionSource(request: Request, fixture: AnalysisQueryResponseV1): string {

@@ -1,8 +1,9 @@
 import {
-  buildFunctionSourceDocument,
   buildProgramSourceDocument,
+  createAnalysisFunctionTemplate,
   extractAnalysisBody,
   generateFunctionBindingDeclarations,
+  isCompleteAnalysisFunctionSource,
   type AnalysisFunctionKind,
   type AnalysisSourceDocument,
 } from '@logbook/analysis-sdk';
@@ -11,17 +12,38 @@ import type {
   AnalysisEditorFunctionBinding,
 } from './types.js';
 
-function prependGeneratedModuleScope(document: AnalysisSourceDocument, declarations = ''): AnalysisSourceDocument {
-  const sections = ['export {};', declarations.trim()].filter(Boolean);
-  const generatedPrefix = `${sections.join('\n')}\n\n`;
-  const addedLines = generatedPrefix.split('\n').length - 1;
+function stableHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function editableFunctionDocument(
+  source: string,
+  fallbackKind: AnalysisFunctionKind,
+  functionAlias: string,
+): AnalysisSourceDocument {
+  const functionSource = isCompleteAnalysisFunctionSource(source)
+    ? source.trim()
+    : createAnalysisFunctionTemplate(fallbackKind, functionAlias).trim();
+  const text = `${functionSource}\n`;
   return {
-    ...document,
-    text: `${generatedPrefix}${document.text}`,
-    prefix: `${generatedPrefix}${document.prefix}`,
-    bodyStartLine: document.bodyStartLine + addedLines,
-    bodyEndLine: document.bodyEndLine + addedLines,
+    text,
+    bodyStartLine: 1,
+    bodyEndLine: Math.max(1, text.split('\n').length - 1),
+    prefix: '',
+    suffix: '',
   };
+}
+
+function extractEditableFunctionSource(sourceText: string): string | null {
+  const functionStart = sourceText.search(/^function\s+/m);
+  if (functionStart < 0) return null;
+  const source = sourceText.slice(functionStart).trim();
+  return isCompleteAnalysisFunctionSource(source) ? source : null;
 }
 
 export function createProgramEditorDocument(options: {
@@ -29,16 +51,23 @@ export function createProgramEditorDocument(options: {
   functionBindings?: readonly AnalysisEditorFunctionBinding[];
 }): AnalysisEditorDocumentAdapter {
   const bindings = options.functionBindings ?? [];
-  const bindingDeclarations = generateFunctionBindingDeclarations(bindings);
+  const bindingIdentity = bindings
+    .map((binding) => `${binding.functionKey ?? binding.alias}:${binding.alias}:${binding.functionKind}`)
+    .join(',');
+  const declarations = generateFunctionBindingDeclarations(bindings);
+  const declarationHash = stableHash(declarations);
 
   return {
-    key: `program:${options.inputAliases.join(',')}:${bindings.map((binding) => `${binding.alias}:${binding.functionKind}`).join(',')}`,
-    build: (sourceBody) => prependGeneratedModuleScope(
-      buildProgramSourceDocument(sourceBody, options.inputAliases),
-      bindingDeclarations,
-    ),
+    // Version the adapter and declaration hash so Monaco cannot reuse a stale v6/v9 model.
+    key: `program-v13:${options.inputAliases.join(',')}:${bindingIdentity}:${declarationHash}`,
+    build: (sourceBody) => buildProgramSourceDocument(sourceBody, options.inputAliases),
     extract: extractAnalysisBody,
-    generatedRegionMessage: 'Generated module scope, selected analysis inputs, reusable-function bindings, and runtime contract.',
+    extraLibraries: [{
+      uri: `file:///logbook-analysis/generated/udf-${declarationHash}.d.ts`,
+      content: declarations,
+    }],
+    generatedDeclarations: declarations,
+    generatedRegionMessage: 'Generated transform signature and runtime contract. Reusable-function declarations are loaded as a hidden TypeScript library.',
   };
 }
 
@@ -47,11 +76,9 @@ export function createFunctionEditorDocument(options: {
   functionAlias: string;
 }): AnalysisEditorDocumentAdapter {
   return {
-    key: `function:${options.functionKind}:${options.functionAlias}`,
-    build: (sourceBody) => prependGeneratedModuleScope(
-      buildFunctionSourceDocument(sourceBody, options.functionKind, options.functionAlias),
-    ),
-    extract: extractAnalysisBody,
-    generatedRegionMessage: 'Generated module scope and reusable-function runtime contract.',
+    key: `function-signature-v13:${options.functionAlias}`,
+    build: (sourceBody) => editableFunctionDocument(sourceBody, options.functionKind, options.functionAlias),
+    extract: extractEditableFunctionSource,
+    generatedRegionMessage: 'The function signature and body are persisted and determine the inferred UDF category.',
   };
 }

@@ -12,17 +12,23 @@ import { AnalysisFunctionsPage } from './pages/AnalysisFunctionsPage';
 import { AnalysisFunctionPage } from './pages/AnalysisFunctionPage';
 
 export default function App() {
-  return <BrowserRouter><Layout><Routes>
-    <Route path="/" element={<DashboardPage />} />
-    <Route path="/events" element={<EventsPage />} />
-    <Route path="/kiosk" element={<KioskPage />} />
-    <Route path="/event-types" element={<EventTypesPage />} />
-    <Route path="/units" element={<UnitsPage />} />
-    <Route path="/types/:key" element={<EventTypePage />} />
-    <Route path="/explore" element={<ExploreHomePage />} />
-    <Route path="/explore/new" element={<ExplorePage />} />
-    <Route path="/explore/:explorationId" element={<ExplorePage />} />
-    <Route path="/analysis-functions" element={<AnalysisFunctionsPage />} />
-    <Route path="/analysis-functions/:functionId" element={<AnalysisFunctionPage />} />
-  </Routes></Layout></BrowserRouter>;
+  return (
+    <BrowserRouter>
+      <Layout>
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/kiosk" element={<KioskPage />} />
+          <Route path="/event-types" element={<EventTypesPage />} />
+          <Route path="/units" element={<UnitsPage />} />
+          <Route path="/types/:key" element={<EventTypePage />} />
+          <Route path="/explore" element={<ExploreHomePage />} />
+          <Route path="/explore/new" element={<ExplorePage />} />
+          <Route path="/explore/:explorationId" element={<ExplorePage />} />
+          <Route path="/analysis-functions" element={<AnalysisFunctionsPage />} />
+          <Route path="/analysis-functions/:functionId" element={<AnalysisFunctionPage />} />
+        </Routes>
+      </Layout>
+    </BrowserRouter>
+  );
 }

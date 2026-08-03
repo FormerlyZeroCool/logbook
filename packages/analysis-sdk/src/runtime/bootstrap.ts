@@ -16,6 +16,7 @@ function guestBootstrap(): void {
     static drop() { return new MapFilterResult(false, null); }
   }
   class NumericPoint {
+    readonly value!: number | null;
     constructor(input: any) { Object.assign(this, input); Object.freeze(this); }
     withValue(value: number | null) { return new NumericPoint({ ...this, value }); }
   }
@@ -49,9 +50,24 @@ function guestBootstrap(): void {
       this.points = Object.freeze([...points].sort((a, b) => a.timeMs - b.timeMs || String(a.eventId).localeCompare(String(b.eventId))));
       Object.freeze(this);
     }
-    map(mapper: any, options: any = {}, context?: any) { return new NumericSeries(this.points.map((point, index) => point.withValue(finite(mapper(point.value, point, index, options, context), 'map'))), this.label, this.unit, this.key); }
+    map(mapper: any, options: any = {}, context?: any) {
+      const output = this.points.map((point, index) => {
+        const mapped = mapper(point.value, point, index, options, context);
+        if (!(mapped instanceof NumericPoint)) throw new Error('map must return a NumericPoint for every row, usually point.withValue(...)');
+        finite(mapped.value, 'map');
+        return mapped;
+      });
+      return new NumericSeries(output, this.label, this.unit, this.key);
+    }
+    mapValues(mapper: any, options: any = {}, context?: any) {
+      return new NumericSeries(this.points.map((point, index) => {
+        if (point.value === null) return point;
+        return point.withValue(finite(mapper(point.value, point, index, options, context), 'mapValues'));
+      }), this.label, this.unit, this.key);
+    }
+    mapPoints(mapper: any, options: any = {}, context?: any) { return new NumericSeries(this.points.map((point, index) => { const mapped = mapper(point, index, options, context); if (!(mapped instanceof NumericPoint)) throw new Error('mapPoints must return a NumericPoint, usually point.withValue(...)'); finite((mapped as any).value, 'mapPoints'); return mapped; }), this.label, this.unit, this.key); }
     filter(predicate: any, options: any = {}, context?: any) { return new NumericSeries(this.points.filter((point, index) => { const keep = predicate(point.value, point, index, options, context); if (typeof keep !== 'boolean') throw new Error('filter must return boolean'); return keep; }), this.label, this.unit, this.key); }
-    mapFilter(mapper: any, options: any = {}, context?: any) { const output: any[] = []; this.points.forEach((point, index) => { const result = mapper(point.value, point, index, options, context); if (!(result instanceof MapFilterResult)) throw new Error('mapFilter must return MapFilterResult'); if (result.keep) output.push(point.withValue(finite(result.value, 'mapFilter'))); }); return new NumericSeries(output, this.label, this.unit, this.key); }
+    mapFilter(mapper: any, options: any = {}, context?: any) { const output: any[] = []; this.points.forEach((point, index) => { const result = mapper(point.value, point, index, options, context); if (result === null) return; if (result instanceof NumericPoint) { finite(result.value, 'mapFilter'); output.push(result); return; } if (result instanceof MapFilterResult) { if (result.keep) output.push(point.withValue(finite(result.value, 'mapFilter'))); return; } throw new Error('mapFilter must return a NumericPoint to keep the row or null to drop it'); }); return new NumericSeries(output, this.label, this.unit, this.key); }
     transformWindow(transformer: any, windowSize: number, options: any = {}, context?: any) {
       if (!Number.isInteger(windowSize) || windowSize < 1) throw new Error('windowSize must be a positive integer');
       const alignment = options.alignment ?? 'trailing'; const partial = options.partial ?? false;
@@ -64,18 +80,21 @@ function guestBootstrap(): void {
         const points = this.points.slice(startIndex, endIndexExclusive);
         if (!partial && (requestedStart < 0 || requestedEnd > this.points.length)) return anchorPoint.withValue(null);
         const window = new NumericWindow({ points, anchorPoint, anchorIndex, startIndex, endIndexExclusive, requestedSize: windowSize });
-        return anchorPoint.withValue(finite(transformer(window, options, context), 'transformWindow'));
+        const transformed = transformer(window, windowSize, options, context);
+        if (!(transformed instanceof NumericPoint)) throw new Error('transformWindow must return a NumericPoint, usually window.anchorPoint.withValue(...)');
+        finite((transformed as any).value, 'transformWindow');
+        return transformed;
       });
       return new NumericSeries(output, this.label, this.unit, this.key);
     }
     windowedMap(transformer: any, windowSize: number, options: any = {}, context?: any) { return this.transformWindow(transformer, windowSize, options, context); }
     windowed_map(transformer: any, windowSize: number, options: any = {}, context?: any) { return this.transformWindow(transformer, windowSize, options, context); }
-    reduce(reducer: any, options: any = {}, context?: any) { const points = options.scope === 'all' ? [...this.points] : this.points.filter((point) => point.inRequestedRange); const result = reducer(points.map((point) => point.value), points, options, context); return result instanceof ScalarValue ? result : new ScalarValue(result, this.label, this.unit); }
+    reduce(reducer: any, options: any = {}, context?: any) { const points = options.scope === 'all' ? [...this.points] : this.points.filter((point) => point.inRequestedRange); const result = reducer(points.map((point) => point.value), points, options, context); if (result !== null && typeof result !== 'number' && typeof result !== 'string') throw new Error('reduce must return a finite number, string, or null'); if (typeof result === 'number' && !Number.isFinite(result)) throw new Error('reduce returned a non-finite number'); return new ScalarValue(result, this.label, typeof result === 'number' ? this.unit : null); }
     filterNulls() { return this.filter((value: any) => value !== null); }
     lag(offset = 1) { return new NumericSeries(this.points.map((point, index) => point.withValue(this.points[index - offset]?.value ?? null)), this.label, this.unit, this.key); }
     lead(offset = 1) { return new NumericSeries(this.points.map((point, index) => point.withValue(this.points[index + offset]?.value ?? null)), this.label, this.unit, this.key); }
     difference(offset = 1) { const lag = this.lag(offset); return new NumericSeries(this.points.map((point, index) => point.withValue(point.value === null || lag.points[index]?.value == null ? null : point.value - lag.points[index].value)), this.label, this.unit, this.key); }
-    rollingMean(size: number, options: any = {}) { return this.transformWindow((window: any) => { const values = window.validValues(); return values.length ? values.reduce((a: number, b: number) => a + b, 0) / values.length : null; }, size, options); }
+    rollingMean(size: number, options: any = {}) { return this.transformWindow((window: any) => { const values = window.validValues(); const value = values.length ? values.reduce((a: number, b: number) => a + b, 0) / values.length : null; return window.anchorPoint.withValue(value); }, size, options); }
     cumulativeSum(options: any = {}) { let total = 0; return new NumericSeries(this.points.map((point) => { if ((options.scope === 'all' || point.inRequestedRange) && point.value !== null) total += point.value; return point.withValue(total); }), this.label, this.unit, this.key); }
     bucket(interval: string, aggregation: string = 'sum', options: any = {}) {
       const match = /^(\d+)\s*(minute|minutes|hour|hours|day|days|week|weeks)$/.exec(String(interval).trim());

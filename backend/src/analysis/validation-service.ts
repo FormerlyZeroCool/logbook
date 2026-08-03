@@ -16,6 +16,7 @@ export type ValidationRequest = {
   inputAliases: string[];
   functionBindings: Array<{
     alias: string;
+    functionKey?: string;
     functionKind: AnalysisFunctionKind;
     sourceBody: string;
     options?: Record<string, unknown>;

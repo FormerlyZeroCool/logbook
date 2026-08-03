@@ -9,8 +9,16 @@ function checkPoint(point: SerializedNumericPoint): void {
 }
 
 export function serializeAnalysisResult(result: unknown, limits?: Pick<AnalysisLimits, 'maxOutputPoints' | 'maxOutputSeries' | 'maxSerializedBytes'>): SerializedAnalysisResult {
-  const serialized = result instanceof ScalarValue ? result.toJSON() : result instanceof NumericSeries ? result.toJSON() : result instanceof SeriesSet ? result.toJSON() : result as SerializedAnalysisResult;
-  if (!serialized || !['scalar', 'series', 'series-set'].includes((serialized as { kind?: string }).kind ?? '')) throw new Error('Program must return ScalarValue, NumericSeries, or SeriesSet');
+  const serialized = typeof result === 'number' || typeof result === 'string' || result === null
+    ? new ScalarValue(result).toJSON()
+    : result instanceof ScalarValue
+      ? result.toJSON()
+      : result instanceof NumericSeries
+        ? result.toJSON()
+        : result instanceof SeriesSet
+          ? result.toJSON()
+          : result as SerializedAnalysisResult;
+  if (!serialized || !['scalar', 'series', 'series-set'].includes((serialized as { kind?: string }).kind ?? '')) throw new Error('Program must return a number, string, null, ScalarValue, NumericSeries, or SeriesSet');
   const series = serialized.kind === 'series' ? [serialized] : serialized.kind === 'series-set' ? serialized.series : [];
   if (limits && series.length > limits.maxOutputSeries) throw new Error('Analysis output exceeds the series limit');
   const pointCount = series.reduce((total, item) => total + item.points.length, 0);

@@ -1,6 +1,6 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
-import type { SourceDiagnostic } from '@logbook/analysis-sdk';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import type { AnalysisSourceDocument, SourceDiagnostic } from '@logbook/analysis-sdk';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { markerToSourceDiagnostic } from './diagnostics.js';
 import { configureAnalysisTypeScript } from './monaco/configure-typescript.js';
 import { retainAnalysisEditorLibrary } from './monaco/extra-library-registry.js';
@@ -11,6 +11,26 @@ ensureAnalysisMonacoEnvironment();
 
 function sanitizeModelKey(value: string): string {
   return value.replace(/[^A-Za-z0-9_.-]/g, '_');
+}
+
+function stableHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function generatedDecorationRanges(sourceDocument: AnalysisSourceDocument, lineCount: number): import('monaco-editor').Range[] {
+  const ranges: import('monaco-editor').Range[] = [];
+  if (sourceDocument.bodyStartLine > 1) {
+    ranges.push(new monaco.Range(1, 1, sourceDocument.bodyStartLine - 1, 1));
+  }
+  if (sourceDocument.bodyEndLine < lineCount) {
+    ranges.push(new monaco.Range(sourceDocument.bodyEndLine + 1, 1, lineCount, 1));
+  }
+  return ranges;
 }
 
 export function AnalysisTypeScriptEditor({
@@ -29,15 +49,22 @@ export function AnalysisTypeScriptEditor({
   className = '',
 }: AnalysisTypeScriptEditorProps) {
   const generatedId = sanitizeModelKey(useId());
-  const path = `file:///logbook-analysis/${sanitizeModelKey(modelKey ?? generatedId)}.ts`;
+  const documentVersion = stableHash(document.key);
+  const path = `file:///logbook-analysis/${sanitizeModelKey(modelKey ?? generatedId)}-${documentVersion}.ts`;
   const sourceDocument = useMemo(() => document.build(sourceBody), [document, sourceBody]);
   const [editorText, setEditorText] = useState(sourceDocument.text);
   const [wrapperModified, setWrapperModified] = useState(false);
+  const [showGeneratedDeclarations, setShowGeneratedDeclarations] = useState(false);
   const [typeDiagnostics, setTypeDiagnostics] = useState<SourceDiagnostic[]>([]);
   const editorRef = useRef<import('monaco-editor').editor.IStandaloneCodeEditor | null>(null);
+  const generatedDecorationsRef = useRef<import('monaco-editor').editor.IEditorDecorationsCollection | null>(null);
+  const sourceDocumentRef = useRef(sourceDocument);
+
   const documentKeyRef = useRef(document.key);
   const saveShortcutRef = useRef(onSaveShortcut);
   const runShortcutRef = useRef(onRunShortcut);
+
+  sourceDocumentRef.current = sourceDocument;
 
   useEffect(() => { saveShortcutRef.current = onSaveShortcut; }, [onSaveShortcut]);
   useEffect(() => { runShortcutRef.current = onRunShortcut; }, [onRunShortcut]);
@@ -48,31 +75,52 @@ export function AnalysisTypeScriptEditor({
       documentKeyRef.current = document.key;
       setEditorText(sourceDocument.text);
       setWrapperModified(false);
+      setShowGeneratedDeclarations(false);
     }
   }, [document, editorText, sourceBody, sourceDocument.text]);
 
   useEffect(() => {
     const releases = (document.extraLibraries ?? []).map(retainAnalysisEditorLibrary);
     return () => { for (const release of releases) release(); };
-  }, [document]);
+  }, [document.extraLibraries]);
+
+  const applyGeneratedPresentation = useCallback((
+    editor: import('monaco-editor').editor.IStandaloneCodeEditor,
+  ): void => {
+    const lineCount = editor.getModel()?.getLineCount() ?? sourceDocument.bodyEndLine;
+    const decorationRanges = generatedDecorationRanges(sourceDocument, lineCount);
+    const hoverMessage = { value: document.generatedRegionMessage ?? 'Generated wrapper; only the body is persisted.' };
+    const decorations = decorationRanges.map((range) => ({
+      range,
+      options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
+    }));
+    if (generatedDecorationsRef.current) generatedDecorationsRef.current.set(decorations);
+    else generatedDecorationsRef.current = editor.createDecorationsCollection(decorations);
+  }, [document.generatedRegionMessage, sourceDocument]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const frame = window.requestAnimationFrame(() => applyGeneratedPresentation(editor));
+    return () => window.cancelAnimationFrame(frame);
+  }, [applyGeneratedPresentation]);
+
+  useEffect(() => () => generatedDecorationsRef.current?.clear(), []);
 
   const handleMount: OnMount = (editor) => {
     editorRef.current = editor;
-    const bodyStart = sourceDocument.bodyStartLine;
-    const bodyEnd = sourceDocument.bodyEndLine;
-    const lineCount = editor.getModel()?.getLineCount() ?? bodyEnd + 1;
-    const hoverMessage = { value: document.generatedRegionMessage ?? 'Generated wrapper; only the body is persisted.' };
-
-    editor.createDecorationsCollection([
-      {
-        range: new monaco.Range(1, 1, Math.max(1, bodyStart - 1), 1),
-        options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
-      },
-      {
-        range: new monaco.Range(bodyEnd + 1, 1, lineCount, 1),
-        options: { isWholeLine: true, className: 'logbook-analysis-editor-generated', hoverMessage },
-      },
-    ]);
+    applyGeneratedPresentation(editor);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyA, () => {
+      const currentDocument = sourceDocumentRef.current;
+      const model = editor.getModel();
+      const endColumn = model?.getLineMaxColumn(currentDocument.bodyEndLine) ?? 1;
+      editor.setSelection(new monaco.Selection(
+        currentDocument.bodyStartLine,
+        1,
+        currentDocument.bodyEndLine,
+        endColumn,
+      ));
+    });
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveShortcutRef.current?.());
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => runShortcutRef.current?.());
   };
@@ -91,18 +139,29 @@ export function AnalysisTypeScriptEditor({
     onSourceBodyChange(body);
   };
 
+  const generatedDeclarations = document.generatedDeclarations?.trim() ?? '';
+  const hasGeneratedDeclarations = generatedDeclarations.length > 0;
   const allDiagnostics = [...typeDiagnostics, ...diagnostics];
   const errorCount = allDiagnostics.filter((item) => item.severity === 'error').length;
   const warningCount = allDiagnostics.filter((item) => item.severity === 'warning').length;
   const rootClassName = ['logbook-analysis-editor', className].filter(Boolean).join(' ');
 
-  return <div className={rootClassName}>
+  return <div className={rootClassName} data-editor-schema="v13" data-generated-declarations={hasGeneratedDeclarations ? (showGeneratedDeclarations ? 'visible' : 'hidden') : 'absent'}>
     <div className="logbook-analysis-editor-toolbar">
       <span><strong>{toolbarLabel}</strong> · strict · browser language service · ⌘/Ctrl+S save · ⌘/Ctrl+Enter run</span>
+      {hasGeneratedDeclarations && <label className="logbook-analysis-editor-generated-toggle">
+        <input
+          type="checkbox"
+          checked={showGeneratedDeclarations}
+          onChange={(event) => setShowGeneratedDeclarations(event.target.checked)}
+        />
+        Show generated declarations
+      </label>}
       <span className="logbook-analysis-editor-diagnostic-count">{errorCount} errors · {warningCount} warnings</span>
       <button type="button" onClick={() => void editorRef.current?.getAction('editor.action.formatDocument')?.run()} disabled={readOnly}>Format</button>
       {wrapperModified && <button type="button" onClick={() => { setEditorText(sourceDocument.text); setWrapperModified(false); }}>Reset generated signature</button>}
     </div>
+    {showGeneratedDeclarations && hasGeneratedDeclarations && <pre className="logbook-analysis-editor-generated-declarations" aria-label="Generated UDF declarations">{generatedDeclarations}</pre>}
     <Editor
       height={height}
       path={path}
@@ -124,6 +183,7 @@ export function AnalysisTypeScriptEditor({
         stickyScroll: { enabled: true },
         fontSize: 14,
         lineHeight: 22,
+        lineNumbers: 'on',
         tabSize: 2,
         insertSpaces: true,
         formatOnPaste: true,

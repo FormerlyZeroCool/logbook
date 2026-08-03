@@ -21,4 +21,5 @@ export * from './validation/index.js';
 export * from './sdk-manifest.js';
 export * from './typescript/source-documents.js';
 export * from './typescript/type-declarations.js';
+export * from './typescript/function-signatures.js';
 export * from './typescript/compiler.js';

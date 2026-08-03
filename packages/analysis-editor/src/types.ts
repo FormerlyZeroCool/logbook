@@ -2,6 +2,7 @@ import type { AnalysisFunctionKind, AnalysisSourceDocument, SourceDiagnostic } f
 
 export type AnalysisEditorFunctionBinding = {
   alias: string;
+  functionKey?: string;
   functionKind: AnalysisFunctionKind;
 };
 
@@ -10,11 +11,15 @@ export type AnalysisEditorExtraLibrary = {
   content: string;
 };
 
+export type AnalysisEditorSourceDocument = AnalysisSourceDocument;
+
 export type AnalysisEditorDocumentAdapter = {
   key: string;
-  build(sourceBody: string): AnalysisSourceDocument;
+  build(sourceBody: string): AnalysisEditorSourceDocument;
   extract(sourceText: string): string | null;
   extraLibraries?: readonly AnalysisEditorExtraLibrary[];
+  /** Read-only generated declarations available through the optional disclosure UI. */
+  generatedDeclarations?: string;
   generatedRegionMessage?: string;
 };
 

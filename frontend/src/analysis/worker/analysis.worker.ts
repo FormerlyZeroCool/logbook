@@ -7,7 +7,7 @@ const cancelled = new Set<string>();
 const serializer = `
 function __point(point){return {time:point.time,timeMs:point.timeMs,value:point.value,eventId:point.eventId??null,note:point.note??null,textValue:point.textValue??null,startedAt:point.startedAt??null,endedAt:point.endedAt??null,inRequestedRange:Boolean(point.inRequestedRange)}}
 function __series(series){return {kind:'series',key:series.key??null,label:series.label,unit:series.unit??null,points:series.points.filter((point)=>point.inRequestedRange).map(__point)}}
-function __result(result){if(result instanceof ScalarValue)return {kind:'scalar',value:result.value,label:result.label,unit:result.unit,description:result.description};if(result instanceof NumericSeries)return __series(result);if(result instanceof SeriesSet)return {kind:'series-set',title:result.title,series:result.series.map(__series)};throw new Error('Program must return ScalarValue, NumericSeries, or SeriesSet')}`;
+function __result(result){if(typeof result==='number'||typeof result==='string'||result===null)return {kind:'scalar',value:result,label:null,unit:null,description:null};if(result instanceof ScalarValue)return {kind:'scalar',value:result.value,label:result.label,unit:result.unit,description:result.description};if(result instanceof NumericSeries)return __series(result);if(result instanceof SeriesSet)return {kind:'series-set',title:result.title,series:result.series.map(__series)};throw new Error('Program must return a number, string, null, ScalarValue, NumericSeries, or SeriesSet')}`;
 
 function buildSource(request: AnalysisRunRequest): { source: string | null; error: string | null } {
   const aliases = request.inputAliases.join(', ');

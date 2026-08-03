@@ -220,17 +220,17 @@ export class AnalysisRepository {
     return row ? { id: row.id, functionKey: row.function_key, functionKind: row.function_kind, isSystem: row.is_system } : null;
   }
 
-  async resolveFunctionBindings(bindings: FunctionBindingDraft[]): Promise<Array<FunctionBindingDraft & { functionKind: string; sourceBody: string }>> {
-    const resolved: Array<FunctionBindingDraft & { functionKind: string; sourceBody: string }> = [];
+  async resolveFunctionBindings(bindings: FunctionBindingDraft[]): Promise<Array<FunctionBindingDraft & { functionKey: string; functionKind: string; sourceBody: string }>> {
+    const resolved: Array<FunctionBindingDraft & { functionKey: string; functionKind: string; sourceBody: string }> = [];
     for (const binding of bindings) {
-      const result = await this.db.query<{ function_kind: string; source_body: string }>(`
-        SELECT f.function_kind,fr.source_body
+      const result = await this.db.query<{ function_key: string; function_kind: string; source_body: string }>(`
+        SELECT f.function_key,COALESCE(fr.output_metadata->>'inferredFunctionKind',f.function_kind) AS function_kind,fr.source_body
         FROM analysis_function_revisions fr JOIN analysis_functions f ON f.id=fr.function_id
         WHERE fr.id=$1 AND fr.validation_status='passed' AND f.published_revision_id=fr.id
       `, [binding.functionRevisionId]);
       const row = result.rows[0];
       if (!row) throw new Error(`Function binding ${binding.alias} must reference a published passed revision`);
-      resolved.push({ ...binding, functionKind: row.function_kind, sourceBody: row.source_body });
+      resolved.push({ ...binding, functionKey: row.function_key, functionKind: row.function_kind, sourceBody: row.source_body });
     }
     return resolved;
   }
@@ -246,7 +246,7 @@ export class AnalysisRepository {
       const source = sourceResult.rows[0];
       if (!source) { await client.query('ROLLBACK'); return null; }
       const suffix = Math.random().toString(36).slice(2, 10);
-      const key = `${source.function_key.slice(0, 49)}-copy-${suffix}`;
+      const key = `${source.function_key.replace(/-/g, '_').slice(0, 49)}_copy_${suffix}`;
       const created = await client.query<{ id: string }>(`INSERT INTO analysis_functions(function_key,name,description,function_kind,is_system) VALUES ($1,$2,$3,$4,false) RETURNING id`, [key, `${source.name} copy`, source.description, source.function_kind]);
       const functionId = created.rows[0]!.id;
       const sourceRevisionId = source.published_revision_id ?? source.draft_revision_id;
@@ -267,7 +267,7 @@ export class AnalysisRepository {
     } finally { client.release(); }
   }
 
-  async createFunctionRevision(functionId: string, draft: { sourceBody: string; parameterSchema?: unknown; defaultOptions?: unknown; outputMetadata?: unknown; sourceHash: string; validationStatus: string; validationReport: unknown }): Promise<unknown> {
+  async createFunctionRevision(functionId: string, draft: { functionKind: string; sourceBody: string; parameterSchema?: unknown; defaultOptions?: unknown; outputMetadata?: unknown; sourceHash: string; validationStatus: string; validationReport: unknown }): Promise<unknown> {
     const client = await this.db.connect();
     try {
       await client.query('BEGIN');
@@ -278,7 +278,7 @@ export class AnalysisRepository {
       `, [functionId, draft.sourceBody, JSON.stringify(draft.parameterSchema ?? {}), JSON.stringify(draft.defaultOptions ?? {}), JSON.stringify(draft.outputMetadata ?? {}), draft.sourceHash, draft.validationStatus, JSON.stringify(draft.validationReport)]);
       const revision = result.rows[0];
       if (!revision) throw new Error('Could not create function revision');
-      await client.query('UPDATE analysis_functions SET draft_revision_id=$2 WHERE id=$1', [functionId, revision.id]);
+      await client.query('UPDATE analysis_functions SET draft_revision_id=$2,function_kind=CASE WHEN published_revision_id IS NULL THEN $3 ELSE function_kind END WHERE id=$1', [functionId, revision.id, draft.functionKind]);
       await client.query('COMMIT');
       return revision;
     } catch (error) {
@@ -288,7 +288,7 @@ export class AnalysisRepository {
   }
 
   async publishFunctionRevision(functionId: string, revisionId: string): Promise<unknown | null> {
-    const result = await this.db.query(`UPDATE analysis_functions f SET published_revision_id=r.id FROM analysis_function_revisions r WHERE f.id=$1 AND r.id=$2 AND r.function_id=f.id AND r.validation_status='passed' RETURNING f.*`, [functionId, revisionId]);
+    const result = await this.db.query(`UPDATE analysis_functions f SET published_revision_id=r.id,function_kind=COALESCE(r.output_metadata->>'inferredFunctionKind',f.function_kind) FROM analysis_function_revisions r WHERE f.id=$1 AND r.id=$2 AND r.function_id=f.id AND r.validation_status='passed' RETURNING f.*`, [functionId, revisionId]);
     return result.rows[0] ?? null;
   }
 

@@ -1,17 +1,20 @@
 import type { AnalysisFunctionKind } from '../contracts.js';
-import { functionBindingDeclaration } from './source-documents.js';
+import { analysisFunctionCollection, analysisFunctionPropertyIdentifier, functionBindingDeclaration } from './source-documents.js';
 
 export const ANALYSIS_SDK_DECLARATIONS = `
-type AnalysisResult = ScalarValue | NumericSeries | SeriesSet;
+type AnalysisResult = number | string | null | ScalarValue | NumericSeries | SeriesSet;
 type AnalysisOptions = Readonly<Record<string, any>>;
 type SeriesScope = 'visible' | 'all';
 type DurationUnit = 'milliseconds' | 'seconds' | 'minutes' | 'hours';
 type WindowAlignment = 'trailing' | 'centered' | 'leading';
-type NumericMapper = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => number | null;
+type NumericValueMapper = (value: number, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => number | null;
+type NumericMapper = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
+type NumericPointMapper = NumericMapper;
+type NumericPointOnlyMapper = (point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
 type NumericPredicate = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => boolean;
-type NumericMapFilter = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => MapFilterResult;
-type WindowTransformer = (window: NumericWindow, options: AnalysisOptions, context: AnalysisContext) => number | null;
-type SeriesReducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: AnalysisOptions, context: AnalysisContext) => number | string | null | ScalarValue;
+type NumericMapFilter = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint | null | MapFilterResult;
+type WindowTransformer = (window: NumericWindow, windowSize: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
+type SeriesReducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: AnalysisOptions, context: AnalysisContext) => number | string | null;
 
 declare class UnitDescriptor {
   constructor(key: string, symbol: string, dimensionKey: string);
@@ -87,6 +90,7 @@ declare class NumericWindow {
   latest(): NumericPoint | null;
 }
 
+/** @deprecated Return a NumericPoint to keep the row or null to drop it. */
 declare class MapFilterResult {
   readonly keep: boolean;
   readonly value: number | null;
@@ -100,17 +104,21 @@ declare class NumericSeries {
   readonly label: string;
   readonly points: readonly NumericPoint[];
   readonly unit: UnitDescriptor | null;
-  /** Transform each point value while preserving timestamps and metadata. Returning undefined, NaN, or Infinity is invalid. */
+  /** Map every row to a complete immutable point, preserving all returned point metadata. */
   map(mapper: NumericMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  /** Scalar shorthand. Null rows remain null and every numeric result is applied with point.withValue(...). */
+  mapValues(mapper: NumericValueMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  /** Point-first convenience form for inline callbacks. Saved udf.mappers callbacks are value-first and should be passed to map(). */
+  mapPoints(mapper: NumericPointOnlyMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Keep a point only when the predicate returns true. Numeric zero is never treated as false automatically. */
   filter(predicate: NumericPredicate, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
-  /** Transform and explicitly keep or drop a point using MapFilterResult. */
+  /** Transform and keep a returned NumericPoint, or drop the row by returning null. */
   mapFilter(mapper: NumericMapFilter, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Apply a trailing, centered, or leading window while preserving the anchor point timestamp and metadata. */
   transformWindow(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
   windowedMap(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
   windowed_map(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
-  /** Collapse the visible range to a scalar. Set scope to all only when context rows should participate. */
+  /** Collapse the visible range to a displayed scalar. Reducers may return a finite number, string, or null. Set scope to all only when context rows should participate. */
   reduce(reducer: SeriesReducer, options?: AnalysisOptions & { scope?: SeriesScope }, context?: AnalysisContext): ScalarValue;
   filterNulls(): NumericSeries;
   lag(offset?: number): NumericSeries;
@@ -179,6 +187,40 @@ declare const process: never;
 declare const require: never;
 `;
 
-export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind }[]): string {
-  return bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias)).join('\n');
+export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind; functionKey?: string }[]): string {
+  const legacyDeclarations = bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias));
+  const groups = {
+    mappers: [] as string[],
+    filters: [] as string[],
+    reducers: [] as string[],
+    window_transforms: [] as string[],
+    map_filters: [] as string[],
+    series_transforms: [] as string[],
+  };
+  for (const binding of bindings) {
+    const functionKey = binding.functionKey ?? binding.alias;
+    const propertyKey = analysisFunctionPropertyIdentifier(functionKey);
+    const collection = analysisFunctionCollection(binding.functionKind);
+    groups[collection].push(
+      `    /** Saved ${binding.functionKind}: ${functionKey} */`,
+      `    readonly ${propertyKey}: typeof ${binding.alias};`,
+    );
+  }
+  const collectionDeclaration = (name: keyof typeof groups): string => {
+    const entries = groups[name];
+    return entries.length
+      ? `  readonly ${name}: Readonly<{\n${entries.join('\n')}\n  }>;`
+      : `  readonly ${name}: Readonly<Record<never, never>>;`;
+  };
+  return [
+    ...legacyDeclarations,
+    'declare const udf: Readonly<{',
+    collectionDeclaration('mappers'),
+    collectionDeclaration('filters'),
+    collectionDeclaration('reducers'),
+    collectionDeclaration('window_transforms'),
+    collectionDeclaration('map_filters'),
+    collectionDeclaration('series_transforms'),
+    '}>;',
+  ].join('\n');
 }

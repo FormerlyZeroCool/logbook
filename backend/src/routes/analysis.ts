@@ -6,6 +6,7 @@ import type {
 import { z } from 'zod';
 import {
   analysisFunctionIdentifier,
+  inferAnalysisFunctionKind,
   type AnalysisFunctionKind,
   type AnalysisLimits as RuntimeLimits,
   type AnalysisQueryRequestV1
@@ -35,6 +36,7 @@ const querySchema = z.object({
 });
 const bindingSchema = z.object({
   alias,
+  functionKey: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/).optional(),
   functionRevisionId: uuid,
   functionKind: z.enum([
     'event-filter',
@@ -87,6 +89,7 @@ const functionKind = z.enum([
 
 type ParsedBinding = {
   alias: string;
+  functionKey?: string;
   functionRevisionId: string;
   functionKind: AnalysisFunctionKind;
   sourceBody: string;
@@ -198,6 +201,7 @@ export async function registerAnalysisRoutes(
       inputAliases: body.inputAliases,
       functionBindings: body.functionBindings.map((item: ParsedBinding) => ({
         alias: item.alias,
+        ...(item.functionKey === undefined ? {} : { functionKey: item.functionKey }),
         functionKind: item.functionKind,
         sourceBody: item.sourceBody,
         ...(item.options === undefined ? {} : { options: item.options })
@@ -282,6 +286,7 @@ export async function registerAnalysisRoutes(
       functionBindings: resolvedBindings.map(
         (item: ResolvedFunctionBinding) => ({
           alias: item.alias,
+          functionKey: item.functionKey,
           functionKind: item.functionKind as AnalysisFunctionKind,
           sourceBody: item.sourceBody,
           ...(item.options === undefined ? {} : { options: item.options })
@@ -346,7 +351,7 @@ export async function registerAnalysisRoutes(
     reply: FastifyReply
   ) => {
     const body = z.object({
-      functionKey: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
+      functionKey: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
       name: z.string().min(1).max(200),
       description: z.string().max(2_000).optional(),
       functionKind
@@ -419,24 +424,29 @@ export async function registerAnalysisRoutes(
     if (definition.isSystem) {
       return conflict(reply, 'System functions are immutable');
     }
-    const actualKind = definition.functionKind as AnalysisFunctionKind;
-    if (body.functionKind && body.functionKind !== actualKind) {
-      return conflict(
-        reply,
-        'Function kind cannot change between revisions'
-      );
+    const inferredKind = inferAnalysisFunctionKind(
+      body.sourceBody,
+      (body.functionKind ?? definition.functionKind) as AnalysisFunctionKind
+    );
+    if (!inferredKind) {
+      return reply.code(422).send({
+        error: 'unsupported_function_signature',
+        message: 'The function signature does not match a supported mapper, filter, reducer, window transform, map/filter, or series transform contract.'
+      });
     }
     const runtimeAlias = analysisFunctionIdentifier(definition.functionKey);
     const report = await validateAnalysisProgram({
-      sourceBody: functionValidationProgram(actualKind, runtimeAlias),
+      sourceBody: functionValidationProgram(inferredKind, runtimeAlias),
       inputAliases: ['event'],
       functionBindings: [{
         alias: runtimeAlias,
-        functionKind: actualKind,
+        functionKey: definition.functionKey,
+        functionKind: inferredKind,
         sourceBody: body.sourceBody
       }]
     }, limits);
     const revision = await repository.createFunctionRevision(id, {
+      functionKind: inferredKind,
       sourceBody: body.sourceBody,
       ...(body.parameterSchema === undefined
         ? {}
@@ -444,11 +454,14 @@ export async function registerAnalysisRoutes(
       ...(body.defaultOptions === undefined
         ? {}
         : { defaultOptions: body.defaultOptions }),
-      ...(body.outputMetadata === undefined
-        ? {}
-        : { outputMetadata: body.outputMetadata }),
+      outputMetadata: {
+        ...(typeof body.outputMetadata === 'object' && body.outputMetadata !== null
+          ? body.outputMetadata as Record<string, unknown>
+          : {}),
+        inferredFunctionKind: inferredKind
+      },
       sourceHash: analysisSourceHash({
-        kind: actualKind,
+        kind: inferredKind,
         sourceBody: body.sourceBody
       }),
       validationStatus: report.status,
@@ -456,6 +469,7 @@ export async function registerAnalysisRoutes(
     });
     return reply.code(201).send({
       ...(revision as object),
+      functionKind: inferredKind,
       validationReport: report
     });
   });

@@ -6,11 +6,14 @@ import { NumericWindow } from './NumericWindow.js';
 import { ScalarValue } from './ScalarValue.js';
 
 export type SeriesScope = 'visible' | 'all';
-export type Mapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
+export type ValueMapper = (value: number, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
+export type Mapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
+export type PointMapper = Mapper;
+export type PointOnlyMapper = (point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
 export type Predicate = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => boolean;
-export type MapFilterMapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => MapFilterResult;
-export type WindowMapper = (window: NumericWindow, options: Record<string, unknown>, context: unknown) => number | null;
-export type Reducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: Record<string, unknown>, context: unknown) => number | string | null | ScalarValue;
+export type MapFilterMapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint | null | MapFilterResult;
+export type WindowMapper = (window: NumericWindow, windowSize: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
+export type Reducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: Record<string, unknown>, context: unknown) => number | string | null;
 
 function selected(points: readonly NumericPoint[], scope: SeriesScope = 'visible'): NumericPoint[] {
   return scope === 'all' ? [...points] : points.filter((point) => point.inRequestedRange);
@@ -38,8 +41,40 @@ export class NumericSeries {
     Object.freeze(this);
   }
 
+  /**
+   * Transform every row by returning a complete immutable point. Returning the
+   * point—not only its value—preserves event identity, timestamps, notes, unit
+   * context, requested-range flags, and future point metadata.
+   */
   map(mapper: Mapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
-    return new NumericSeries(this.points.map((point, index) => point.withValue(assertFiniteNumber(mapper(point.value, point, index, options, context), 'map'))), this.label, this.unit, this.key);
+    return new NumericSeries(this.points.map((point, index) => {
+      const mapped = mapper(point.value, point, index, options, context);
+      if (!(mapped instanceof NumericPoint)) {
+        throw new AnalysisRuntimeError('invalid_point_map_result', 'map must return a NumericPoint for every row, usually point.withValue(...)');
+      }
+      assertFiniteNumber(mapped.value, 'map');
+      return mapped;
+    }), this.label, this.unit, this.key);
+  }
+
+  /** Scalar shorthand that always preserves the original point metadata. */
+  mapValues(mapper: ValueMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+    return new NumericSeries(this.points.map((point, index) => {
+      if (point.value === null) return point;
+      const value = mapper(point.value, point, index, options, context);
+      return point.withValue(assertFiniteNumber(value, 'mapValues'));
+    }), this.label, this.unit, this.key);
+  }
+
+  mapPoints(mapper: PointOnlyMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+    return new NumericSeries(this.points.map((point, index) => {
+      const mapped = mapper(point, index, options, context);
+      if (!(mapped instanceof NumericPoint)) {
+        throw new AnalysisRuntimeError('invalid_point_map_result', 'mapPoints must return a NumericPoint, usually point.withValue(...)');
+      }
+      assertFiniteNumber(mapped.value, 'mapPoints');
+      return mapped;
+    }), this.label, this.unit, this.key);
   }
 
   filter(predicate: Predicate, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
@@ -54,8 +89,18 @@ export class NumericSeries {
     const points: NumericPoint[] = [];
     this.points.forEach((point, index) => {
       const result = mapper(point.value, point, index, options, context);
-      if (!(result instanceof MapFilterResult)) throw new AnalysisRuntimeError('invalid_map_filter_result', 'mapFilter must return MapFilterResult.keep(...) or MapFilterResult.drop()');
-      if (result.keep) points.push(point.withValue(assertFiniteNumber(result.value, 'mapFilter')));
+      if (result === null) return;
+      if (result instanceof NumericPoint) {
+        assertFiniteNumber(result.value, 'mapFilter');
+        points.push(result);
+        return;
+      }
+      // Backward compatibility for revisions saved before NumericPoint | null became the public contract.
+      if (result instanceof MapFilterResult) {
+        if (result.keep) points.push(point.withValue(assertFiniteNumber(result.value, 'mapFilter')));
+        return;
+      }
+      throw new AnalysisRuntimeError('invalid_map_filter_result', 'mapFilter must return a NumericPoint to keep the row or null to drop it');
     });
     return new NumericSeries(points, this.label, this.unit, this.key);
   }
@@ -76,7 +121,12 @@ export class NumericSeries {
       const points = this.points.slice(startIndex, endIndexExclusive);
       if (!partial && (requestedStart < 0 || requestedEnd > this.points.length)) return anchorPoint.withValue(null);
       const window = new NumericWindow({ points, anchorPoint, anchorIndex, startIndex, endIndexExclusive, requestedSize: windowSize });
-      return anchorPoint.withValue(assertFiniteNumber(transformer(window, options, context), 'transformWindow'));
+      const transformed = transformer(window, windowSize, options, context);
+      if (!(transformed instanceof NumericPoint)) {
+        throw new AnalysisRuntimeError('invalid_window_transform_result', 'transformWindow must return a NumericPoint, usually window.anchorPoint.withValue(...)');
+      }
+      assertFiniteNumber(transformed.value, 'transformWindow');
+      return transformed;
     });
     return new NumericSeries(output, this.label, this.unit, this.key);
   }
@@ -91,10 +141,11 @@ export class NumericSeries {
   reduce(reducer: Reducer, options: { scope?: SeriesScope } & Record<string, unknown> = {}, context?: unknown): ScalarValue {
     const points = selected(this.points, options.scope);
     const result = reducer(points.map((point) => point.value), points, options, context);
-    if (result instanceof ScalarValue) return result;
-    if (typeof result !== 'number' && typeof result !== 'string' && result !== null) throw new AnalysisRuntimeError('invalid_reduce_result', 'reduce must return a number, string, null, or ScalarValue');
+    if (typeof result !== 'number' && typeof result !== 'string' && result !== null) {
+      throw new AnalysisRuntimeError('invalid_reduce_result', 'reduce must return a finite number, string, or null');
+    }
     if (typeof result === 'number' && !Number.isFinite(result)) throw new AnalysisRuntimeError('invalid_reduce_result', 'reduce returned a non-finite number');
-    return new ScalarValue(result, this.label, this.unit);
+    return new ScalarValue(result, this.label, typeof result === 'number' ? this.unit : null);
   }
 
   filterNulls(): NumericSeries { return this.filter((value) => value !== null); }
@@ -114,7 +165,7 @@ export class NumericSeries {
     }), this.label, this.unit, this.key);
   }
   rollingMean(windowSize: number, options: Record<string, unknown> = {}): NumericSeries {
-    return this.transformWindow((window) => aggregate([...window.validValues()], 'mean'), windowSize, options);
+    return this.transformWindow((window) => window.anchorPoint.withValue(aggregate([...window.validValues()], 'mean')), windowSize, options);
   }
   cumulativeSum(options: { scope?: SeriesScope } = {}): NumericSeries {
     let total = 0;

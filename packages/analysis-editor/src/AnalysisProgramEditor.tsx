@@ -14,7 +14,9 @@ export function AnalysisProgramEditor({
   ...editorProps
 }: AnalysisProgramEditorProps) {
   const inputKey = inputAliases.join('\u0000');
-  const bindingKey = functionBindings.map((binding) => `${binding.alias}:${binding.functionKind}`).join('\u0000');
+  const bindingKey = functionBindings
+    .map((binding) => `${binding.functionKey ?? binding.alias}:${binding.alias}:${binding.functionKind}`)
+    .join('\u0000');
   const document = useMemo(
     () => createProgramEditorDocument({ inputAliases, functionBindings }),
     [inputKey, bindingKey],
