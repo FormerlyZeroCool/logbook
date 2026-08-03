@@ -9,6 +9,7 @@ import {
   type SourceDiagnostic,
 } from '@logbook/analysis-sdk';
 import type { SessionFunctionDraft } from '../session-types';
+import { createSessionFunctionId } from './session-function-id';
 
 const TEMPLATE_BUTTONS: readonly { kind: AnalysisFunctionKind; label: string; factory?: boolean }[] = [
   { kind: 'point-map', label: 'New mapper' },
@@ -28,10 +29,10 @@ const TEMPLATE_BUTTONS: readonly { kind: AnalysisFunctionKind; label: string; fa
 ];
 
 export function createSessionFunction(kind: AnalysisFunctionKind = 'point-map', factory: boolean = false): SessionFunctionDraft {
-  const suffix = crypto.randomUUID().slice(0, 8);
+  const suffix = createSessionFunctionId().replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase();
   const functionKey = `draft_${suffix}`;
   return {
-    id: crypto.randomUUID(),
+    id: createSessionFunctionId(),
     functionKey,
     name: 'New session function',
     description: '',
