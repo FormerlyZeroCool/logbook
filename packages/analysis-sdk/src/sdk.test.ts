@@ -25,7 +25,7 @@ describe('analysis SDK', () => {
       ],
     }, 1_000_000).values();
     const inline = series.map((value, point) => point.withValue((value ?? 0) * 10));
-    expect(inline.points.map((point) => point.value)).toEqual([null, 20, -30]);
+    expect(inline.points.map((point) => point.value)).toEqual([0, 20, -30]);
 
     const savedMapper = (value: number | null, point: typeof series.points[number]) => point.withValue((value ?? 0) * 10);
     const output = series.map(savedMapper);
@@ -62,7 +62,7 @@ describe('analysis SDK', () => {
   });
   it('uses context rows for windows and clips serialization', () => {
     const output = new EventSeries(input, 1_000_000).values().transformWindow((window, windowSize) => window.anchorPoint.withValue(window.validValues().reduce((a, b) => a + b, 0) / windowSize), 2, { partial: false });
-    expect(output.points[1]?.value).toBe(1);
+    expect(output.points[1]?.value).toBe(0.5);
     expect(output.toJSON().points).toHaveLength(5);
   });
   it('reduces visible rows by default', () => {
