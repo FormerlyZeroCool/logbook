@@ -2,7 +2,7 @@ import { generateProgramBody, pipelineOperationRegistry, type PipelineDefinition
 import type { AnalysisFunctionSummary } from '../../types';
 import {
   availablePipelineOperations,
-  pipelineOutputType,
+  pipelineStepInsertionPoint,
   pipelineStepInputTypes,
 } from './pipeline-editor-model';
 import { PipelineStepEditor } from './PipelineStepEditor';
@@ -17,8 +17,16 @@ export function PipelineEditor({
   onChange: (definition: PipelineDefinitionV1) => void;
 }) {
   const inputTypes = pipelineStepInputTypes(definition.steps, pipelineOperationRegistry);
-  const outputType = pipelineOutputType(definition.steps, pipelineOperationRegistry);
-  const nextOperation = availablePipelineOperations(pipelineOperationRegistry, outputType)[0];
+  const insertionPoint = pipelineStepInsertionPoint(
+    definition.steps,
+    pipelineOperationRegistry,
+  );
+  const nextOperation = insertionPoint
+    ? availablePipelineOperations(
+        pipelineOperationRegistry,
+        insertionPoint.inputType,
+      )[0]
+    : undefined;
 
   const changeStep = (index: number, step: PipelineDefinitionV1['steps'][number]): void => {
     onChange({
@@ -33,12 +41,18 @@ export function PipelineEditor({
       <button
         type="button"
         disabled={!nextOperation}
+        title={insertionPoint && insertionPoint.index < definition.steps.length
+          ? 'Insert before the terminal scalar step'
+          : 'Append a pipeline step'}
         onClick={() => {
-          if (!nextOperation) return;
-          onChange({
-            ...definition,
-            steps: [...definition.steps, { operation: nextOperation.methodName }],
-          });
+          if (!nextOperation || !insertionPoint) return;
+          const steps = [...definition.steps];
+          steps.splice(
+            insertionPoint.index,
+            0,
+            { operation: nextOperation.methodName },
+          );
+          onChange({ ...definition, steps });
         }}
       >
         Add step

@@ -56,6 +56,49 @@ export function pipelineStepInputTypes(
   });
 }
 
+export type PipelineStepInsertionPoint = {
+  index: number;
+  inputType: 'EventSeries' | 'NumericSeries';
+};
+
+export function pipelineStepInsertionPoint(
+  steps: readonly PipelineStepLike[],
+  registry: readonly PipelineOperationLike[],
+): PipelineStepInsertionPoint | null {
+  let currentType: PipelineValueTypeName = 'EventSeries';
+
+  for (const [index, step] of steps.entries()) {
+    if (currentType !== 'EventSeries' && currentType !== 'NumericSeries') {
+      return null;
+    }
+
+    const descriptor = resolvePipelineOperation(
+      registry,
+      step.operation,
+      currentType,
+    );
+
+    if (!descriptor) {
+      return { index, inputType: currentType };
+    }
+
+    if (
+      descriptor.outputType !== 'EventSeries'
+      && descriptor.outputType !== 'NumericSeries'
+    ) {
+      return { index, inputType: currentType };
+    }
+
+    currentType = descriptor.outputType;
+  }
+
+  if (currentType !== 'EventSeries' && currentType !== 'NumericSeries') {
+    return null;
+  }
+
+  return { index: steps.length, inputType: currentType };
+}
+
 export function pipelineOutputType(
   steps: readonly PipelineStepLike[],
   registry: readonly PipelineOperationLike[],

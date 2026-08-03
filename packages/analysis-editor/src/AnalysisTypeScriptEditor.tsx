@@ -179,6 +179,7 @@ export function AnalysisTypeScriptEditor({
       options={{
         readOnly,
         automaticLayout: true,
+        fixedOverflowWidgets: true,
         minimap: { enabled: true, showSlider: 'mouseover' },
         stickyScroll: { enabled: true },
         fontSize: 14,

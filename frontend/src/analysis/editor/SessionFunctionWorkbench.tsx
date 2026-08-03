@@ -1,4 +1,5 @@
 import { AnalysisFunctionEditor } from '@logbook/analysis-editor';
+import { useEffect, useRef } from 'react';
 import {
   analysisFunctionIdentifier,
   createAnalysisFunctionFactoryTemplate,
@@ -66,6 +67,25 @@ export function SessionFunctionWorkbench({
     ? inferAnalysisFunctionKind(selected.sourceBody)
     : null;
 
+  const selectedEditorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!selected) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const container = selectedEditorRef.current;
+      if (!container) return;
+
+      container.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const editorInput = container.querySelector<HTMLElement>(
+        '.monaco-editor textarea.inputarea, .monaco-editor [role="textbox"]',
+      );
+      editorInput?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [selected?.id]);
+
   return <div className="session-function-workbench">
     <div className="analysis-panel-heading">
       <div>
@@ -86,7 +106,7 @@ export function SessionFunctionWorkbench({
           {item.libraryRevisionId && <small>Saved to library</small>}
         </button>)}
       </nav>
-      {selected ? <div className="session-function-editor">
+      {selected ? <div ref={selectedEditorRef} className="session-function-editor" data-session-function-editor={selected.id}>
         <div className="analysis-form-grid">
           <label>Name<input value={selected.name} onChange={(event) => onChange({ ...selected, name: event.target.value })} /></label>
           <label>Key<input value={selected.functionKey} disabled={Boolean(selected.libraryFunctionId)} onChange={(event) => onChange({ ...selected, functionKey: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_') })} /></label>
@@ -94,6 +114,7 @@ export function SessionFunctionWorkbench({
           <label className="analysis-form-span">Description<input value={selected.description} onChange={(event) => onChange({ ...selected, description: event.target.value })} /></label>
         </div>
         <AnalysisFunctionEditor
+          key={selected.id}
           functionKind={inferredKind ?? selected.functionKind}
           functionAlias={analysisFunctionIdentifier(selected.functionKey || 'draft_function')}
           sourceBody={selected.sourceBody}
