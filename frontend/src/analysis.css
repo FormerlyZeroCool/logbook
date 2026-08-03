@@ -1,3 +1,5 @@
+@reference "tailwindcss";
+
 /*
  * Analysis UI styles are intentionally scoped. Do not import Tailwind or add a
  * global reset here: Monaco and the existing Logbook pages rely on the normal
