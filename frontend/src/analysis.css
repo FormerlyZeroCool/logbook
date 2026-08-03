@@ -312,3 +312,69 @@
   display: grid;
   gap: 0.75rem;
 }
+
+
+/* Pipeline drag-and-drop reordering */
+.pipeline-step-dnd-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.pipeline-step-dnd-row > .pipeline-step {
+  min-width: 0;
+}
+
+.pipeline-step-drag-handle {
+  align-self: stretch;
+  min-height: 3rem;
+  padding: 0.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.pipeline-step-drag-handle:active {
+  cursor: grabbing;
+}
+
+.pipeline-step-drag-handle:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.pipeline-step-dnd-row.is-dragging {
+  opacity: 0.5;
+}
+
+.pipeline-step-dnd-row.is-drop-before::before,
+.pipeline-step-dnd-row.is-drop-after::after {
+  content: '';
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 999px;
+  background: #8b5cf6;
+  pointer-events: none;
+}
+
+.pipeline-step-dnd-row.is-drop-before::before {
+  top: -0.35rem;
+}
+
+.pipeline-step-dnd-row.is-drop-after::after {
+  bottom: -0.35rem;
+}
+
+.pipeline-step-dnd-row.is-drop-invalid::before,
+.pipeline-step-dnd-row.is-drop-invalid::after {
+  background: #ef4444;
+}

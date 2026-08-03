@@ -61,6 +61,65 @@ export type PipelineStepInsertionPoint = {
   inputType: 'EventSeries' | 'NumericSeries';
 };
 
+export function pipelineStepsAreValid(
+  steps: readonly PipelineStepLike[],
+  registry: readonly PipelineOperationLike[],
+): boolean {
+  let currentType: PipelineValueTypeName = 'EventSeries';
+
+  for (const step of steps) {
+    const descriptor = resolvePipelineOperation(
+      registry,
+      step.operation,
+      currentType,
+    );
+    if (!descriptor) return false;
+    currentType = descriptor.outputType;
+  }
+
+  return true;
+}
+
+export function reorderPipelineSteps<T extends PipelineStepLike>(
+  steps: readonly T[],
+  fromIndex: number,
+  toIndex: number,
+  registry: readonly PipelineOperationLike[],
+): T[] | null {
+  if (
+    fromIndex < 0
+    || fromIndex >= steps.length
+    || toIndex < 0
+    || toIndex >= steps.length
+  ) {
+    return null;
+  }
+
+  const reordered = [...steps];
+  const [moved] = reordered.splice(fromIndex, 1);
+  if (!moved) return null;
+  reordered.splice(toIndex, 0, moved);
+
+  return pipelineStepsAreValid(reordered, registry)
+    ? reordered
+    : null;
+}
+
+export function reorderPipelineStepsAtBoundary<T extends PipelineStepLike>(
+  steps: readonly T[],
+  fromIndex: number,
+  boundaryIndex: number,
+  registry: readonly PipelineOperationLike[],
+): T[] | null {
+  if (boundaryIndex < 0 || boundaryIndex > steps.length) return null;
+
+  const toIndex = boundaryIndex > fromIndex
+    ? boundaryIndex - 1
+    : boundaryIndex;
+
+  return reorderPipelineSteps(steps, fromIndex, toIndex, registry);
+}
+
 export function pipelineStepInsertionPoint(
   steps: readonly PipelineStepLike[],
   registry: readonly PipelineOperationLike[],
