@@ -13,7 +13,7 @@
     "typecheck": "tsc -b --pretty false",
     "check": "npm run lint && npm run typecheck && npm test && npm run build",
     "lint": "eslint src vite.config.ts",
-    "test": "NODE_NO_WARNINGS=1 node --experimental-strip-types --test tests/*.test.ts"
+    "test": "NODE_NO_WARNINGS=1 node --test tests/*.test.ts"
   },
   "dependencies": {
     "@logbook/analysis-editor": "1.0.0",

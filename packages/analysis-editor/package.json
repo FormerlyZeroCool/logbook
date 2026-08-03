@@ -13,7 +13,7 @@
   "scripts": {
     "build": "npm run typecheck",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "NODE_NO_WARNINGS=1 node --experimental-strip-types --test tests/*.test.ts",
+    "test": "NODE_NO_WARNINGS=1 node --test tests/*.test.ts",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
