@@ -30,7 +30,6 @@ export type AnalysisFunctionCollection =
   | 'map_filters'
   | 'series_transforms';
 
-/** Nested member of the generated `udf` object for a reusable function kind. */
 export function analysisFunctionCollection(functionKind: AnalysisFunctionKind): AnalysisFunctionCollection {
   switch (functionKind) {
     case 'event-filter':
@@ -49,14 +48,12 @@ export function analysisFunctionCollection(functionKind: AnalysisFunctionKind): 
   }
 }
 
-/** Stable underscore-only property name. Legacy hyphens normalize to underscores. */
 export function analysisFunctionPropertyIdentifier(functionKey: string): string {
   const normalized = functionKey.replace(/[^A-Za-z0-9_]/g, '_');
   if (!normalized) return '_function';
   return /^[A-Za-z_]/.test(normalized) ? normalized : `_${normalized}`;
 }
 
-/** Public code-mode reference for a reusable function. */
 export function analysisFunctionReference(functionKey: string, functionKind: AnalysisFunctionKind): string {
   return `udf.${analysisFunctionCollection(functionKind)}.${analysisFunctionPropertyIdentifier(functionKey)}`;
 }
@@ -73,27 +70,33 @@ function programPrefix(inputAliases: readonly string[]): string {
   return `function transform(\n${parameters}\n): AnalysisResult {\n  ${ANALYSIS_BODY_START}\n`;
 }
 
-export function analysisFunctionSignature(kind: AnalysisFunctionKind): { parameters: string[]; returnType: string } {
+export function analysisFunctionSignature(
+  kind: AnalysisFunctionKind,
+  legacyOptions = false,
+): { parameters: string[]; returnType: string } {
+  const context = legacyOptions
+    ? ['options: AnalysisOptions', 'context: AnalysisContext']
+    : ['context: AnalysisContext'];
   switch (kind) {
     case 'event-filter':
-      return { parameters: ['event: EventRecord', 'index: number', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'boolean' };
+      return { parameters: ['event: EventRecord', 'index: number', ...context], returnType: 'boolean' };
     case 'point-map':
-      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'NumericPoint' };
+      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', ...context], returnType: 'NumericPoint' };
     case 'point-filter':
-      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'boolean' };
+      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', ...context], returnType: 'boolean' };
     case 'map-filter':
-      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'NumericPoint | null' };
+      return { parameters: ['value: number | null', 'point: NumericPoint', 'index: number', ...context], returnType: 'NumericPoint | null' };
     case 'window-transform':
-      return { parameters: ['window: NumericWindow', 'windowSize: number', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'NumericPoint' };
+      return { parameters: ['window: NumericWindow', 'windowSize: number', ...context], returnType: 'NumericPoint' };
     case 'reducer':
-      return { parameters: ['values: readonly (number | null)[]', 'points: readonly NumericPoint[]', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'number | string | null' };
+      return { parameters: ['values: readonly (number | null)[]', 'points: readonly NumericPoint[]', ...context], returnType: 'number | string | null' };
     case 'series-transform':
-      return { parameters: ['series: NumericSeries', 'options: AnalysisOptions', 'context: AnalysisContext'], returnType: 'AnalysisResult' };
+      return { parameters: ['series: NumericSeries', ...context], returnType: 'AnalysisResult' };
   }
 }
 
-function functionPrefix(kind: AnalysisFunctionKind, alias: string): string {
-  const signature = analysisFunctionSignature(kind);
+function functionPrefix(kind: AnalysisFunctionKind, alias: string, legacyOptions = false): string {
+  const signature = analysisFunctionSignature(kind, legacyOptions);
   return `function ${alias}(\n${signature.parameters.map((parameter) => `  ${parameter},`).join('\n')}\n): ${signature.returnType} {\n  ${ANALYSIS_BODY_START}\n`;
 }
 
@@ -126,27 +129,20 @@ function fullFunctionDocument(source: string): AnalysisSourceDocument {
   };
 }
 
-function normalizeCompleteFunctionSource(source: string, kind: AnalysisFunctionKind, alias: string): string {
-  let normalized = rewriteAnalysisFunctionName(source, alias);
-  if (kind !== 'point-map') return normalized;
-  const found = findAnalysisFunctionDeclaration(normalized);
-  if (!found || found.declaration.parameters.length !== 4) return normalized;
-  const first = found.declaration.parameters[0];
-  if (!first || first.type?.getText(found.sourceFile).replace(/\s+/g, '') !== 'NumericPoint') return normalized;
-  const start = first.getStart(found.sourceFile);
-  const lineStart = normalized.lastIndexOf('\n', start - 1) + 1;
-  const indentation = normalized.slice(lineStart, start);
-  const separator = lineStart === 0 && normalized.slice(0, start).includes('(')
-    ? 'value: number | null, '
-    : `value: number | null,\n${indentation}`;
-  return `${normalized.slice(0, start)}${separator}${normalized.slice(start)}`;
+function normalizeCompleteFunctionSource(source: string, alias: string): string {
+  return rewriteAnalysisFunctionName(source, alias);
+}
+
+function bodyUsesLegacyOptions(sourceBody: string): boolean {
+  return /\boptions\b/.test(sourceBody);
 }
 
 export function buildFunctionSourceDocument(sourceBody: string, kind: AnalysisFunctionKind, alias: string): AnalysisSourceDocument {
   if (isCompleteAnalysisFunctionSource(sourceBody)) {
-    return fullFunctionDocument(normalizeCompleteFunctionSource(sourceBody, kind, alias));
+    return fullFunctionDocument(normalizeCompleteFunctionSource(sourceBody, alias));
   }
-  return makeDocument(functionPrefix(kind, alias), sourceBody);
+  const legacyOptions = kind !== 'point-map' && bodyUsesLegacyOptions(sourceBody);
+  return makeDocument(functionPrefix(kind, alias, legacyOptions), sourceBody);
 }
 
 export function createAnalysisFunctionTemplate(kind: AnalysisFunctionKind, alias: string): string {
@@ -164,6 +160,47 @@ export function createAnalysisFunctionTemplate(kind: AnalysisFunctionKind, alias
     .replace(`\n  ${ANALYSIS_BODY_END}`, '');
 }
 
+/** Example configurable UDF. The template remains in the same inferred category. */
+export function createAnalysisFunctionFactoryTemplate(kind: AnalysisFunctionKind, alias: string): string {
+  const callbackType: Record<AnalysisFunctionKind, string> = {
+    'event-filter': 'EventPredicate',
+    'point-map': 'NumericMapper',
+    'point-filter': 'NumericPredicate',
+    'map-filter': 'NumericMapFilter',
+    'window-transform': 'WindowTransformer',
+    reducer: 'SeriesReducer',
+    'series-transform': 'SeriesTransformer',
+  };
+  const callbackParameters: Record<AnalysisFunctionKind, string> = {
+    'event-filter': '(event, index, context)',
+    'point-map': '(value, point, index, context)',
+    'point-filter': '(value, point, index, context)',
+    'map-filter': '(value, point, index, context)',
+    'window-transform': '(window, windowSize, context)',
+    reducer: '(values, points, context)',
+    'series-transform': '(series, context)',
+  };
+  const callbackBody: Record<AnalysisFunctionKind, string> = {
+    'event-filter': 'return config.include_ongoing || !event.ongoing;',
+    'point-map': 'return value === null ? point : point.withValue(value * config.factor);',
+    'point-filter': 'return value !== null && value >= config.minimum;',
+    'map-filter': 'return value !== null && value >= config.minimum ? point : null;',
+    'window-transform': 'const minimumPoints = config.minimum_points ?? windowSize;\n    if (window.actualSize < minimumPoints) return window.anchorPoint.withValue(null);\n    const valid = window.validValues();\n    const value = valid.length ? valid.reduce((total, item) => total + item, 0) / valid.length : null;\n    return window.anchorPoint.withValue(value);',
+    reducer: 'const valid = values.filter((value): value is number => value !== null);\n    return valid.length ? valid.reduce((total, value) => total + value, 0) / valid.length : config.empty_value;',
+    'series-transform': 'return series.withLabel(config.label);',
+  };
+  const configType: Record<AnalysisFunctionKind, string> = {
+    'event-filter': '{ include_ongoing: boolean }',
+    'point-map': '{ factor: number }',
+    'point-filter': '{ minimum: number }',
+    'map-filter': '{ minimum: number }',
+    'window-transform': '{ minimum_points?: number }',
+    reducer: '{ empty_value: number | string | null }',
+    'series-transform': '{ label: string }',
+  };
+  return `function ${alias}(config: ${configType[kind]}): ${callbackType[kind]} {\n  return ${callbackParameters[kind]} => {\n    ${callbackBody[kind]}\n  };\n}\n`;
+}
+
 export function extractAnalysisBody(sourceText: string): string | null {
   const start = sourceText.indexOf(ANALYSIS_BODY_START);
   const end = sourceText.indexOf(ANALYSIS_BODY_END);
@@ -176,7 +213,22 @@ export function extractAnalysisBody(sourceText: string): string | null {
   return lines.map((line) => line.slice(Math.min(indentation, line.length))).join('\n');
 }
 
-export function functionBindingDeclaration(kind: AnalysisFunctionKind, alias: string): string {
-  const signature = analysisFunctionSignature(kind);
+export function functionBindingDeclaration(kind: AnalysisFunctionKind, alias: string, sourceBody?: string): string {
+  if (sourceBody && isCompleteAnalysisFunctionSource(sourceBody)) {
+    const found = findAnalysisFunctionDeclaration(sourceBody);
+    if (found) {
+      const parameters = found.declaration.parameters.map((parameter, index) => {
+        const name = parameter.name.getText(found.sourceFile) || `arg${index}`;
+        const rest = parameter.dotDotDotToken ? '...' : '';
+        const optional = parameter.questionToken || parameter.initializer ? '?' : '';
+        const type = parameter.type?.getText(found.sourceFile) ?? 'unknown';
+        return `${rest}${name}${optional}: ${type}`;
+      }).join(', ');
+      const returnType = found.declaration.type?.getText(found.sourceFile) ?? analysisFunctionSignature(kind).returnType;
+      return `declare function ${alias}(${parameters}): ${returnType};`;
+    }
+  }
+  const legacyOptions = kind !== 'point-map' && Boolean(sourceBody && bodyUsesLegacyOptions(sourceBody));
+  const signature = analysisFunctionSignature(kind, legacyOptions);
   return `declare function ${alias}(${signature.parameters.join(', ')}): ${signature.returnType};`;
 }

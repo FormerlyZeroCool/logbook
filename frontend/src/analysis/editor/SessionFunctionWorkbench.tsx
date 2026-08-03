@@ -1,6 +1,7 @@
 import { AnalysisFunctionEditor } from '@logbook/analysis-editor';
 import {
   analysisFunctionIdentifier,
+  createAnalysisFunctionFactoryTemplate,
   createAnalysisFunctionTemplate,
   inferAnalysisFunctionKind,
   type AnalysisFunctionKind,
@@ -8,7 +9,7 @@ import {
 } from '@logbook/analysis-sdk';
 import type { SessionFunctionDraft } from '../session-types';
 
-const TEMPLATE_BUTTONS: readonly { kind: AnalysisFunctionKind; label: string }[] = [
+const TEMPLATE_BUTTONS: readonly { kind: AnalysisFunctionKind; label: string; factory?: boolean }[] = [
   { kind: 'point-map', label: 'New mapper' },
   { kind: 'point-filter', label: 'New filter' },
   { kind: 'reducer', label: 'New reducer' },
@@ -16,9 +17,16 @@ const TEMPLATE_BUTTONS: readonly { kind: AnalysisFunctionKind; label: string }[]
   { kind: 'event-filter', label: 'New event filter' },
   { kind: 'map-filter', label: 'New map/filter' },
   { kind: 'series-transform', label: 'New series transform' },
+  { kind: 'point-map', label: 'New mapper factory', factory: true },
+  { kind: 'point-filter', label: 'New filter factory', factory: true },
+  { kind: 'reducer', label: 'New reducer factory', factory: true },
+  { kind: 'window-transform', label: 'New window factory', factory: true },
+  { kind: 'event-filter', label: 'New event-filter factory', factory: true },
+  { kind: 'map-filter', label: 'New map/filter factory', factory: true },
+  { kind: 'series-transform', label: 'New series factory', factory: true },
 ];
 
-export function createSessionFunction(kind: AnalysisFunctionKind = 'point-map'): SessionFunctionDraft {
+export function createSessionFunction(kind: AnalysisFunctionKind = 'point-map', factory: boolean = false): SessionFunctionDraft {
   const suffix = crypto.randomUUID().slice(0, 8);
   const functionKey = `draft_${suffix}`;
   return {
@@ -27,7 +35,9 @@ export function createSessionFunction(kind: AnalysisFunctionKind = 'point-map'):
     name: 'New session function',
     description: '',
     functionKind: kind,
-    sourceBody: createAnalysisFunctionTemplate(kind, analysisFunctionIdentifier(functionKey)),
+    sourceBody: factory
+      ? createAnalysisFunctionFactoryTemplate(kind, analysisFunctionIdentifier(functionKey))
+      : createAnalysisFunctionTemplate(kind, analysisFunctionIdentifier(functionKey)),
     diagnostics: [],
   };
 }
@@ -47,7 +57,7 @@ export function SessionFunctionWorkbench({
   savingId: string | null;
   onChange: (functionDraft: SessionFunctionDraft) => void;
   onSelect: (id: string | null) => void;
-  onCreate: (kind?: AnalysisFunctionKind) => void;
+  onCreate: (kind?: AnalysisFunctionKind, factory?: boolean) => void;
   onDelete: (id: string) => void;
   onSaveToLibrary: (functionDraft: SessionFunctionDraft) => void;
 }) {
@@ -64,7 +74,7 @@ export function SessionFunctionWorkbench({
       </div>
     </div>
     <div className="analysis-template-buttons" aria-label="Create UDF from template">
-      {TEMPLATE_BUTTONS.map((template) => <button key={template.kind} type="button" onClick={() => onCreate(template.kind)}>{template.label}</button>)}
+      {TEMPLATE_BUTTONS.map((template) => <button key={`${template.kind}:${template.factory ? 'factory' : 'direct'}`} type="button" onClick={() => onCreate(template.kind, Boolean(template.factory))}>{template.label}</button>)}
     </div>
     <div className="session-function-layout">
       <nav className="session-function-list" aria-label="Session functions">

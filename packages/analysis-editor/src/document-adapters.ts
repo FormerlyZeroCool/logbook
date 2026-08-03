@@ -52,14 +52,14 @@ export function createProgramEditorDocument(options: {
 }): AnalysisEditorDocumentAdapter {
   const bindings = options.functionBindings ?? [];
   const bindingIdentity = bindings
-    .map((binding) => `${binding.functionKey ?? binding.alias}:${binding.alias}:${binding.functionKind}`)
+    .map((binding) => `${binding.functionKey ?? binding.alias}:${binding.alias}:${binding.functionKind}:${stableHash(binding.sourceBody ?? '')}`)
     .join(',');
   const declarations = generateFunctionBindingDeclarations(bindings);
   const declarationHash = stableHash(declarations);
 
   return {
     // Version the adapter and declaration hash so Monaco cannot reuse a stale v6/v9 model.
-    key: `program-v13:${options.inputAliases.join(',')}:${bindingIdentity}:${declarationHash}`,
+    key: `program-v15:${options.inputAliases.join(',')}:${bindingIdentity}:${declarationHash}`,
     build: (sourceBody) => buildProgramSourceDocument(sourceBody, options.inputAliases),
     extract: extractAnalysisBody,
     extraLibraries: [{
@@ -76,7 +76,7 @@ export function createFunctionEditorDocument(options: {
   functionAlias: string;
 }): AnalysisEditorDocumentAdapter {
   return {
-    key: `function-signature-v13:${options.functionAlias}`,
+    key: `function-signature-v15:${options.functionAlias}`,
     build: (sourceBody) => editableFunctionDocument(sourceBody, options.functionKind, options.functionAlias),
     extract: extractEditableFunctionSource,
     generatedRegionMessage: 'The function signature and body are persisted and determine the inferred UDF category.',

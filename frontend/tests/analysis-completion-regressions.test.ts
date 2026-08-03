@@ -39,7 +39,8 @@ test('every listed function is exposed through the nested udf object and best sa
   const declarations = read('../packages/analysis-sdk/src/typescript/type-declarations.ts');
   const compiler = read('../packages/analysis-sdk/src/typescript/compiler.ts');
 
-  assert.match(explore, /functionBindings=\{functionCatalog\.map/);
+  assert.match(explore, /const editorFunctionBindings = useMemo\(\(\) => functionCatalog\.map/);
+  assert.match(explore, /functionBindings=\{editorFunctionBindings\}/);
   assert.doesNotMatch(explore, /functionCatalog\.filter\(hasSavedRevision\)/);
   assert.match(explore, /published_revision_id\s*\?\?\s*item\.draft_revision_id/);
   assert.match(explore, /detail\.revisions\?\.\[0\]/);
@@ -86,7 +87,7 @@ test('saved function contracts are inferred from editable signatures and window 
   assert.match(sourceDocuments, /case 'window-transform':[\s\S]*?'windowSize: number'[\s\S]*?returnType: 'NumericPoint'/);
   assert.match(declarations, /type SeriesReducer =[\s\S]*?=> number \| string \| null;/);
   assert.match(routes, /case 'point-map':[\s\S]*?\.map\(/);
-  assert.match(routes, /inferAnalysisFunctionKind/);
+  assert.match(routes, /inferAnalysisFunction/);
   assert.match(routes, /unsupported_function_signature/);
   assert.match(functionPage, /inferAnalysisFunctionKind/);
   assert.match(functionPage, /Function signature and body/);
@@ -104,7 +105,7 @@ test('NumericPoint or null return signatures infer map_filters and null drops th
   const functionsPage = read('src/pages/AnalysisFunctionsPage.tsx');
 
   assert.match(signatures, /isNumericPointOrNull/);
-  assert.match(signatures, /isNumericPointOrNull\(returnType\).*return 'map-filter'/s);
+  assert.match(signatures, /isNumericPointOrNull\(returnType\)[\s\S]*?functionKind: 'map-filter'/);
   assert.match(sourceDocuments, /case 'map-filter':[\s\S]*?returnType: 'NumericPoint \| null'/);
   assert.match(sourceDocuments, /'map-filter': 'return value === null \? null : point;'/);
   assert.match(declarations, /type NumericMapFilter =[\s\S]*?=> NumericPoint \| null/);
@@ -121,11 +122,13 @@ test('UDF creation uses template buttons but saved category follows the edited s
   const repository = read('../backend/src/analysis/repository.ts');
 
   for (const label of ['Mapper', 'Filter', 'Reducer', 'Window transform']) assert.match(functionsPage, new RegExp(`label: '${label}'`));
-  for (const label of ['New mapper', 'New filter', 'New reducer', 'New window transform']) assert.match(sessionEditor, new RegExp(label));
+  for (const label of ['New mapper', 'New filter', 'New reducer', 'New window transform', 'New mapper factory', 'New reducer factory']) assert.match(sessionEditor, new RegExp(label));
   assert.doesNotMatch(sessionEditor, /<label>Kind<select/);
-  assert.match(signatures, /inferDeclarationKind/);
+  assert.match(signatures, /inferDirectKind/);
   assert.match(signatures, /parameters\[0\] === 'NumericWindow'/);
   assert.match(signatures, /parameters\[1\] === 'number'/);
+  assert.match(signatures, /FACTORY_RETURN_KINDS/);
+  assert.match(signatures, /NumericMapper: 'point-map'/);
   assert.match(repository, /draft_revision_id=\$2,function_kind=CASE WHEN published_revision_id IS NULL THEN \$3/);
   assert.match(repository, /output_metadata->>'inferredFunctionKind'/);
 });
@@ -135,7 +138,7 @@ test('generated declarations stay outside the editable Monaco model while signat
   const adapters = readPackage('src/document-adapters.ts');
 
   assert.match(editor, /Show generated declarations/);
-  assert.match(editor, /data-editor-schema=\"v13\"/);
+  assert.match(editor, /data-editor-schema=\"v15\"/);
   assert.match(editor, /data-generated-declarations/);
   assert.match(editor, /document\.generatedDeclarations/);
   assert.match(editor, /Generated UDF declarations/);
@@ -145,7 +148,7 @@ test('generated declarations stay outside the editable Monaco model while signat
   assert.match(editor, /monaco\.KeyCode\.KeyA/);
   assert.match(adapters, /extraLibraries: \[\{/);
   assert.match(adapters, /build: \(sourceBody\) => buildProgramSourceDocument/);
-  assert.match(adapters, /program-v13:/);
+  assert.match(adapters, /program-v15:/);
   assert.doesNotMatch(adapters, /export \{\};/);
 });
 
@@ -173,7 +176,7 @@ test('map preserves complete points and all NumericSeries higher-order functions
   assert.match(declarations, /type NumericPointMapper = NumericMapper/);
   assert.match(declarations, /map\(mapper: NumericMapper/);
   assert.match(sourceDocuments, /case 'point-map':[\s\S]*?'value: number \| null'[\s\S]*?returnType: 'NumericPoint'/);
-  assert.match(signatures, /parameters\.length === 5[\s\S]*?returnType === 'NumericPoint'[\s\S]*?return 'point-map'/);
+  assert.match(signatures, /parameters\.length === 4[\s\S]*?returnType === 'NumericPoint'[\s\S]*?functionKind: 'point-map'/);
   assert.doesNotMatch(compiler, /__logbookNumericMapperKind/);
   assert.match(hostSeries, /map must return a NumericPoint for every row/);
   assert.match(hostSeries, /mapValues\(mapper: ValueMapper/);

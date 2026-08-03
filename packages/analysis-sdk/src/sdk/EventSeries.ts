@@ -42,9 +42,21 @@ export class EventSeries {
     const scale = durationScale(unit);
     return this.fromEvents((event, index) => this.events[index + 1] ? (this.events[index + 1]!.startedAtMs - event.startedAtMs) / scale : null, `${this.label} time until next start`, { key: unit, symbol: unit === 'minutes' ? 'min' : unit === 'hours' ? 'h' : unit === 'seconds' ? 's' : 'ms', dimensionKey: 'time' });
   }
-  filter(predicate: (event: EventRecord, index: number, options: Record<string, unknown>, context: unknown) => boolean, options: Record<string, unknown> = {}, context?: unknown): EventSeries {
+  filter(
+    predicate: ((event: EventRecord, index: number, context: unknown) => boolean)
+      | ((event: EventRecord, index: number, options: Record<string, unknown>, context: unknown) => boolean),
+    contextOrOptions?: unknown,
+    legacyContext?: unknown,
+  ): EventSeries {
+    const legacy = predicate.length >= 4;
+    const options = legacy && typeof contextOrOptions === 'object' && contextOrOptions !== null
+      ? contextOrOptions as Record<string, unknown>
+      : {};
+    const context = legacy ? legacyContext : contextOrOptions;
     const events = this.events.filter((event, index) => {
-      const result = predicate(event, index, options, context);
+      const result = legacy
+        ? (predicate as (event: EventRecord, index: number, options: Record<string, unknown>, context: unknown) => boolean)(event, index, options, context)
+        : (predicate as (event: EventRecord, index: number, context: unknown) => boolean)(event, index, context);
       if (typeof result !== 'boolean') throw new Error('EventSeries.filter predicate must return boolean');
       return result;
     });

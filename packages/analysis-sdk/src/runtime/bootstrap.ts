@@ -50,24 +50,27 @@ function guestBootstrap(): void {
       this.points = Object.freeze([...points].sort((a, b) => a.timeMs - b.timeMs || String(a.eventId).localeCompare(String(b.eventId))));
       Object.freeze(this);
     }
-    map(mapper: any, options: any = {}, context?: any) {
+    map(mapper: any, context?: any) {
       const output = this.points.map((point, index) => {
-        const mapped = mapper(point.value, point, index, options, context);
+        const mapped = mapper(point.value, point, index, context);
         if (!(mapped instanceof NumericPoint)) throw new Error('map must return a NumericPoint for every row, usually point.withValue(...)');
         finite(mapped.value, 'map');
         return mapped;
       });
       return new NumericSeries(output, this.label, this.unit, this.key);
     }
-    mapValues(mapper: any, options: any = {}, context?: any) {
+    mapValues(mapper: any, contextOrOptions?: any, legacyContext?: any) {
+      const legacy = mapper.length >= 5;
+      const options = legacy && contextOrOptions && typeof contextOrOptions === 'object' ? contextOrOptions : {};
+      const context = legacy ? legacyContext : contextOrOptions;
       return new NumericSeries(this.points.map((point, index) => {
         if (point.value === null) return point;
-        return point.withValue(finite(mapper(point.value, point, index, options, context), 'mapValues'));
+        return point.withValue(finite(legacy ? mapper(point.value, point, index, options, context) : mapper(point.value, point, index, context), 'mapValues'));
       }), this.label, this.unit, this.key);
     }
-    mapPoints(mapper: any, options: any = {}, context?: any) { return new NumericSeries(this.points.map((point, index) => { const mapped = mapper(point, index, options, context); if (!(mapped instanceof NumericPoint)) throw new Error('mapPoints must return a NumericPoint, usually point.withValue(...)'); finite((mapped as any).value, 'mapPoints'); return mapped; }), this.label, this.unit, this.key); }
-    filter(predicate: any, options: any = {}, context?: any) { return new NumericSeries(this.points.filter((point, index) => { const keep = predicate(point.value, point, index, options, context); if (typeof keep !== 'boolean') throw new Error('filter must return boolean'); return keep; }), this.label, this.unit, this.key); }
-    mapFilter(mapper: any, options: any = {}, context?: any) { const output: any[] = []; this.points.forEach((point, index) => { const result = mapper(point.value, point, index, options, context); if (result === null) return; if (result instanceof NumericPoint) { finite(result.value, 'mapFilter'); output.push(result); return; } if (result instanceof MapFilterResult) { if (result.keep) output.push(point.withValue(finite(result.value, 'mapFilter'))); return; } throw new Error('mapFilter must return a NumericPoint to keep the row or null to drop it'); }); return new NumericSeries(output, this.label, this.unit, this.key); }
+    mapPoints(mapper: any, contextOrOptions?: any, legacyContext?: any) { const legacy = mapper.length >= 4; const options = legacy && contextOrOptions && typeof contextOrOptions === 'object' ? contextOrOptions : {}; const context = legacy ? legacyContext : contextOrOptions; return new NumericSeries(this.points.map((point, index) => { const mapped = legacy ? mapper(point, index, options, context) : mapper(point, index, context); if (!(mapped instanceof NumericPoint)) throw new Error('mapPoints must return a NumericPoint, usually point.withValue(...)'); finite((mapped as any).value, 'mapPoints'); return mapped; }), this.label, this.unit, this.key); }
+    filter(predicate: any, contextOrOptions?: any, legacyContext?: any) { const legacy = predicate.length >= 5; const options = legacy && contextOrOptions && typeof contextOrOptions === 'object' ? contextOrOptions : {}; const context = legacy ? legacyContext : contextOrOptions; return new NumericSeries(this.points.filter((point, index) => { const keep = legacy ? predicate(point.value, point, index, options, context) : predicate(point.value, point, index, context); if (typeof keep !== 'boolean') throw new Error('filter must return boolean'); return keep; }), this.label, this.unit, this.key); }
+    mapFilter(mapper: any, contextOrOptions?: any, legacyContext?: any) { const legacy = mapper.length >= 5; const options = legacy && contextOrOptions && typeof contextOrOptions === 'object' ? contextOrOptions : {}; const context = legacy ? legacyContext : contextOrOptions; const output: any[] = []; this.points.forEach((point, index) => { const result = legacy ? mapper(point.value, point, index, options, context) : mapper(point.value, point, index, context); if (result === null) return; if (result instanceof NumericPoint) { finite(result.value, 'mapFilter'); output.push(result); return; } if (result instanceof MapFilterResult) { if (result.keep) output.push(point.withValue(finite(result.value, 'mapFilter'))); return; } throw new Error('mapFilter must return a NumericPoint to keep the row or null to drop it'); }); return new NumericSeries(output, this.label, this.unit, this.key); }
     transformWindow(transformer: any, windowSize: number, options: any = {}, context?: any) {
       if (!Number.isInteger(windowSize) || windowSize < 1) throw new Error('windowSize must be a positive integer');
       const alignment = options.alignment ?? 'trailing'; const partial = options.partial ?? false;
@@ -80,7 +83,7 @@ function guestBootstrap(): void {
         const points = this.points.slice(startIndex, endIndexExclusive);
         if (!partial && (requestedStart < 0 || requestedEnd > this.points.length)) return anchorPoint.withValue(null);
         const window = new NumericWindow({ points, anchorPoint, anchorIndex, startIndex, endIndexExclusive, requestedSize: windowSize });
-        const transformed = transformer(window, windowSize, options, context);
+        const transformed = transformer.length >= 4 ? transformer(window, windowSize, options, context) : transformer(window, windowSize, context);
         if (!(transformed instanceof NumericPoint)) throw new Error('transformWindow must return a NumericPoint, usually window.anchorPoint.withValue(...)');
         finite((transformed as any).value, 'transformWindow');
         return transformed;
@@ -89,7 +92,7 @@ function guestBootstrap(): void {
     }
     windowedMap(transformer: any, windowSize: number, options: any = {}, context?: any) { return this.transformWindow(transformer, windowSize, options, context); }
     windowed_map(transformer: any, windowSize: number, options: any = {}, context?: any) { return this.transformWindow(transformer, windowSize, options, context); }
-    reduce(reducer: any, options: any = {}, context?: any) { const points = options.scope === 'all' ? [...this.points] : this.points.filter((point) => point.inRequestedRange); const result = reducer(points.map((point) => point.value), points, options, context); if (result !== null && typeof result !== 'number' && typeof result !== 'string') throw new Error('reduce must return a finite number, string, or null'); if (typeof result === 'number' && !Number.isFinite(result)) throw new Error('reduce returned a non-finite number'); return new ScalarValue(result, this.label, typeof result === 'number' ? this.unit : null); }
+    reduce(reducer: any, options: any = {}, context?: any) { const points = options.scope === 'all' ? [...this.points] : this.points.filter((point) => point.inRequestedRange); const result = reducer.length >= 4 ? reducer(points.map((point) => point.value), points, options, context) : reducer(points.map((point) => point.value), points, context); if (result !== null && typeof result !== 'number' && typeof result !== 'string') throw new Error('reduce must return a finite number, string, or null'); if (typeof result === 'number' && !Number.isFinite(result)) throw new Error('reduce returned a non-finite number'); return new ScalarValue(result, this.label, typeof result === 'number' ? this.unit : null); }
     filterNulls() { return this.filter((value: any) => value !== null); }
     lag(offset = 1) { return new NumericSeries(this.points.map((point, index) => point.withValue(this.points[index - offset]?.value ?? null)), this.label, this.unit, this.key); }
     lead(offset = 1) { return new NumericSeries(this.points.map((point, index) => point.withValue(this.points[index + offset]?.value ?? null)), this.label, this.unit, this.key); }
@@ -135,7 +138,7 @@ function guestBootstrap(): void {
     durations(unit = 'seconds') { const scale = unit === 'milliseconds' ? 1 : unit === 'seconds' ? 1000 : unit === 'minutes' ? 60000 : 3600000; return this.build((event: any) => event.durationMs === null ? null : event.durationMs / scale, `${(this as any).label} duration`, { key: unit, symbol: unit === 'minutes' ? 'min' : unit === 'hours' ? 'h' : unit === 'seconds' ? 's' : 'ms', dimensionKey: 'time' }); }
     timeBetweenStarts(unit = 'minutes') { const scale = unit === 'milliseconds' ? 1 : unit === 'seconds' ? 1000 : unit === 'minutes' ? 60000 : 3600000; return this.build((event: any, index: number) => index ? (event.startedAtMs - this.events[index - 1].startedAtMs) / scale : null, 'Time between starts', { key: unit, symbol: unit === 'minutes' ? 'min' : unit, dimensionKey: 'time' }); }
     timeUntilNextStart(unit = 'minutes') { const scale = unit === 'milliseconds' ? 1 : unit === 'seconds' ? 1000 : unit === 'minutes' ? 60000 : 3600000; return this.build((event: any, index: number) => this.events[index + 1] ? (this.events[index + 1].startedAtMs - event.startedAtMs) / scale : null, 'Time until next start', { key: unit, symbol: unit === 'minutes' ? 'min' : unit, dimensionKey: 'time' }); }
-    filter(predicate: any, options: any = {}, context?: any) { const filtered = this.events.filter((event: any, index: number) => { const keep = predicate(event, index, options, context); if (typeof keep !== 'boolean') throw new Error('EventSeries.filter predicate must return boolean'); return keep; }); return new EventSeries({ key: this.key, label: this.label, unit: this.unit, events: filtered.map((event: any) => ({ id: event.id, startedAt: event.startedAt, endedAt: event.endedAt, displayValue: event.value, textValue: event.textValue, note: event.note, ongoing: event.ongoing, inRequestedRange: event.inRequestedRange, ...(event.calendarBucketStarts ? { calendarBucketStarts: event.calendarBucketStarts } : {}) })) }, this.nowMs); }
+    filter(predicate: any, contextOrOptions?: any, legacyContext?: any) { const legacy = predicate.length >= 4; const options = legacy && contextOrOptions && typeof contextOrOptions === 'object' ? contextOrOptions : {}; const context = legacy ? legacyContext : contextOrOptions; const filtered = this.events.filter((event: any, index: number) => { const keep = legacy ? predicate(event, index, options, context) : predicate(event, index, context); if (typeof keep !== 'boolean') throw new Error('EventSeries.filter predicate must return boolean'); return keep; }); return new EventSeries({ key: this.key, label: this.label, unit: this.unit, events: filtered.map((event: any) => ({ id: event.id, startedAt: event.startedAt, endedAt: event.endedAt, displayValue: event.value, textValue: event.textValue, note: event.note, ongoing: event.ongoing, inRequestedRange: event.inRequestedRange, ...(event.calendarBucketStarts ? { calendarBucketStarts: event.calendarBucketStarts } : {}) })) }, this.nowMs); }
     count(options: any = {}) { const events = options.scope === 'all' ? this.events : this.events.filter((event: any) => event.inRequestedRange); return new ScalarValue(events.length, `${(this as any).label} count`); }
     first(options: any = {}) { return (options.scope === 'all' ? this.events : this.events.filter((event: any) => event.inRequestedRange))[0] ?? null; }
     latest(options: any = {}) { return (options.scope === 'all' ? this.events : this.events.filter((event: any) => event.inRequestedRange)).at(-1) ?? null; }

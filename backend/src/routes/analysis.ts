@@ -6,8 +6,10 @@ import type {
 import { z } from 'zod';
 import {
   analysisFunctionIdentifier,
-  inferAnalysisFunctionKind,
+  analysisFunctionValidationReference,
+  inferAnalysisFunction,
   type AnalysisFunctionKind,
+  type AnalysisFunctionMode,
   type AnalysisLimits as RuntimeLimits,
   type AnalysisQueryRequestV1
 } from '@logbook/analysis-sdk';
@@ -155,23 +157,35 @@ function conflict(reply: FastifyReply, message: string): FastifyReply {
 
 function functionValidationProgram(
   kind: AnalysisFunctionKind,
-  aliasName: string
+  callableExpression: string,
+  mode: AnalysisFunctionMode
 ): string {
+  const legacy = mode === 'legacy-direct';
   switch (kind) {
     case 'event-filter':
-      return `return event.filter(${aliasName}, {}, context).values();`;
+      return legacy
+        ? `return event.filter(${callableExpression}, {}, context).values();`
+        : `return event.filter(${callableExpression}, context).values();`;
     case 'point-map':
-      return `return event.values().map(${aliasName}, {}, context);`;
+      return legacy
+        ? `return event.values().map(${callableExpression}, {}, context);`
+        : `return event.values().map(${callableExpression}, context);`;
     case 'point-filter':
-      return `return event.values().filter(${aliasName}, {}, context);`;
+      return legacy
+        ? `return event.values().filter(${callableExpression}, {}, context);`
+        : `return event.values().filter(${callableExpression}, context);`;
     case 'map-filter':
-      return `return event.values().mapFilter(${aliasName}, {}, context);`;
+      return legacy
+        ? `return event.values().mapFilter(${callableExpression}, {}, context);`
+        : `return event.values().mapFilter(${callableExpression}, context);`;
     case 'window-transform':
-      return `return event.values().transformWindow(${aliasName}, 4, { partial: true }, context);`;
+      return `return event.values().transformWindow(${callableExpression}, 4, { partial: true }, context);`;
     case 'reducer':
-      return `return event.values().reduce(${aliasName}, {}, context);`;
+      return `return event.values().reduce(${callableExpression}, {}, context);`;
     case 'series-transform':
-      return `return ${aliasName}(event.values(), {}, context);`;
+      return legacy
+        ? `return ${callableExpression}(event.values(), {}, context);`
+        : `return ${callableExpression}(event.values(), context);`;
   }
 }
 
@@ -424,19 +438,27 @@ export async function registerAnalysisRoutes(
     if (definition.isSystem) {
       return conflict(reply, 'System functions are immutable');
     }
-    const inferredKind = inferAnalysisFunctionKind(
+    const inferred = inferAnalysisFunction(
       body.sourceBody,
       (body.functionKind ?? definition.functionKind) as AnalysisFunctionKind
     );
-    if (!inferredKind) {
+    const inferredKind = inferred?.functionKind ?? null;
+    if (!inferredKind || !inferred) {
       return reply.code(422).send({
         error: 'unsupported_function_signature',
         message: 'The function signature does not match a supported mapper, filter, reducer, window transform, map/filter, or series transform contract.'
       });
     }
     const runtimeAlias = analysisFunctionIdentifier(definition.functionKey);
+    const callableExpression = analysisFunctionValidationReference(body.sourceBody, runtimeAlias);
+    if (!callableExpression) {
+      return reply.code(422).send({
+        error: 'unsupported_factory_parameters',
+        message: 'Factory parameters must use inline serializable types such as numbers, strings, booleans, arrays, tuples, or object literals.'
+      });
+    }
     const report = await validateAnalysisProgram({
-      sourceBody: functionValidationProgram(inferredKind, runtimeAlias),
+      sourceBody: functionValidationProgram(inferredKind, callableExpression, inferred.mode),
       inputAliases: ['event'],
       functionBindings: [{
         alias: runtimeAlias,
@@ -458,7 +480,8 @@ export async function registerAnalysisRoutes(
         ...(typeof body.outputMetadata === 'object' && body.outputMetadata !== null
           ? body.outputMetadata as Record<string, unknown>
           : {}),
-        inferredFunctionKind: inferredKind
+        inferredFunctionKind: inferredKind,
+        inferredFunctionMode: inferred.mode
       },
       sourceHash: analysisSourceHash({
         kind: inferredKind,

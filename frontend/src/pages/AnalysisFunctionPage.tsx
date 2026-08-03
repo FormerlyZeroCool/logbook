@@ -2,6 +2,7 @@ import { AnalysisFunctionEditor } from '@logbook/analysis-editor';
 import {
   analysisFunctionIdentifier,
   analysisFunctionReference,
+  createAnalysisFunctionFactoryTemplate,
   createAnalysisFunctionTemplate,
   inferAnalysisFunctionKind,
   type AnalysisFunctionKind,
@@ -10,12 +11,14 @@ import {
 } from '@logbook/analysis-sdk';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { ValidationReport } from '../analysis/validation/ValidationReport';
 
 export function AnalysisFunctionPage() {
   const { functionId = '' } = useParams();
+  const [searchParams] = useSearchParams();
+  const factoryTemplateRequested = searchParams.get('template') === 'factory';
   const queryClient = useQueryClient();
   const detail = useQuery({ queryKey: ['analysis-function', functionId], queryFn: () => api.getAnalysisFunction(functionId) });
   const item = detail.data as {
@@ -38,10 +41,12 @@ export function AnalysisFunctionPage() {
     const revision = item.revisions?.[0];
     const functionKind = item.function_kind ?? 'point-map';
     const alias = analysisFunctionIdentifier(item.function_key ?? 'udf');
-    setSource(revision?.source_body ?? createAnalysisFunctionTemplate(functionKind, alias));
+    setSource(revision?.source_body ?? (factoryTemplateRequested
+      ? createAnalysisFunctionFactoryTemplate(functionKind, alias)
+      : createAnalysisFunctionTemplate(functionKind, alias)));
     setRevisionId(revision?.id ?? null);
     setReport(revision?.validation_report ?? null);
-  }, [detail.data]);
+  }, [detail.data, factoryTemplateRequested]);
 
   const storedKind = item?.function_kind ?? 'point-map';
   const inferredKind = inferAnalysisFunctionKind(source, storedKind);
@@ -53,8 +58,6 @@ export function AnalysisFunctionPage() {
         alias: analysisFunctionIdentifier(item?.function_key ?? 'udf'),
         functionKind: inferredKind,
         sourceBody: source,
-        parameterSchema: { type: 'object', additionalProperties: true },
-        defaultOptions: {},
         outputMetadata: { inferredFunctionKind: inferredKind },
       });
     },
@@ -106,7 +109,11 @@ export function AnalysisFunctionPage() {
       <main>
         <section className="analysis-panel">
           <h2>Function signature and body</h2>
-          <p className="analysis-signature">Edit the parameter and return types directly. A valid signature automatically moves the function to the matching <code>udf</code> collection.</p>
+          <p className="analysis-signature">Edit the parameter and return types directly. A valid signature automatically moves the function to the matching <code>udf</code> collection. Configurable UDFs return a typed callback such as <code>NumericMapper</code>.</p>
+          {!item.is_system && <div className="analysis-template-buttons" aria-label="Replace function with template">
+            <button type="button" onClick={() => setSource(createAnalysisFunctionTemplate(effectiveKind, analysisFunctionIdentifier(key)))}>Direct callback template</button>
+            <button type="button" onClick={() => setSource(createAnalysisFunctionFactoryTemplate(effectiveKind, analysisFunctionIdentifier(key)))}>Typed factory template</button>
+          </div>}
           <AnalysisFunctionEditor
             sourceBody={source}
             onSourceBodyChange={setSource}

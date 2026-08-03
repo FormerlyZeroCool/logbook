@@ -2,8 +2,12 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {
   analysisFunctionIdentifier,
+  createAnalysisFunctionFactoryTemplate,
   createAnalysisFunctionTemplate,
+  analysisFunctionValidationReference,
+  inferAnalysisFunction,
   inferAnalysisFunctionKind,
+  inferPipelineContext,
   analysisFunctionPropertyIdentifier,
   buildProgramSourceDocument,
   compileAnalysisProgram,
@@ -165,7 +169,7 @@ describe('TypeScript analysis authoring', () => {
 
   it('keeps the ergonomic non-null inline map callback', () => {
     const result = compileAnalysisProgram({
-      sourceBody: 'return event.values().map((value, point, index, options) => point.withValue((value ?? 0) * 1000));',
+      sourceBody: 'return event.values().map((value, point, index, context) => point.withValue((value ?? 0) * 1000));',
       inputAliases: ['event'],
       semantic: true,
     });
@@ -195,18 +199,46 @@ describe('TypeScript analysis authoring', () => {
     }
   });
 
-  it('normalizes legacy point-first mapper source to the value-first inferred map contract', () => {
-    const result = compileAnalysisProgram({
-      sourceBody: 'return event.values().map(udf.mappers.legacy);',
+
+  it('rejects obsolete mapper signatures instead of rewriting them', () => {
+    const pointFirst = `function old_mapper(
+  point: NumericPoint,
+  index: number,
+  context: AnalysisContext,
+): NumericPoint {
+  void index;
+  void context;
+  return point;
+}`;
+    const optionsBag = `function old_mapper(
+  value: number | null,
+  point: NumericPoint,
+  index: number,
+  options: AnalysisOptions,
+  context: AnalysisContext,
+): NumericPoint {
+  void value;
+  void index;
+  void options;
+  void context;
+  return point;
+}`;
+
+    expect(inferAnalysisFunctionKind(pointFirst)).toBeNull();
+    expect(inferAnalysisFunctionKind(optionsBag)).toBeNull();
+
+    const bodyOnly = compileAnalysisProgram({
+      sourceBody: 'return event.values().map(udf.mappers.old_mapper);',
       inputAliases: ['event'],
       functionBindings: [{
-        alias: 'fn_legacy', functionKey: 'legacy', functionKind: 'point-map',
-        sourceBody: 'function legacy(point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext): NumericPoint { return point.withValue(point.value ?? 0); }',
+        alias: 'fn_old_mapper',
+        functionKey: 'old_mapper',
+        functionKind: 'point-map',
+        sourceBody: 'return point.withValue(value === null ? null : value * Number(options.factor ?? 1));',
       }],
       semantic: true,
     });
-    expect(result.diagnostics).toEqual([]);
-    expect(result.typescript).toContain('value: number | null');
+    expect(bodyOnly.diagnostics.some((diagnostic) => diagnostic.severity === 'error')).toBe(true);
   });
 
   it('generates one ambient typed udf object for the editor library', () => {
@@ -280,11 +312,99 @@ describe('TypeScript analysis authoring', () => {
       inputAlias: 'event',
       steps: [
         { operation: 'values' },
-        { operation: 'map', functionBinding: 'scale' },
+        { operation: 'map', functionBinding: 'scale', arguments: [2] },
       ],
       outputType: 'NumericSeries',
       queryContext: { mode: 'derived', rowsBefore: 0, rowsAfter: 0, exact: true },
     });
-    expect(body).toContain('.map(udf.mappers.scale)');
+    expect(body).toContain('.map(udf.mappers.scale(2))');
   });
+
+  it('infers typed factories from their returned callback type and preserves their parameter declarations', () => {
+    const clampSource = `function clamp(min: number, max: number): NumericMapper {
+      return (value, point, index, context): NumericPoint => value === null
+        ? point
+        : point.withValue(Math.min(max, Math.max(min, value)));
+    }`;
+    expect(inferAnalysisFunction(clampSource)).toEqual({
+      functionKind: 'point-map',
+      functionName: 'clamp',
+      mode: 'factory',
+    });
+    expect(analysisFunctionValidationReference(clampSource, 'fn_clamp')).toBe('fn_clamp(0, 0)');
+    const declarations = generateFunctionBindingDeclarations([{
+      functionKey: 'clamp',
+      alias: 'fn_clamp',
+      functionKind: 'point-map',
+      sourceBody: clampSource,
+    }]);
+    expect(declarations).toContain('declare function fn_clamp(min: number, max: number): NumericMapper;');
+    expect(declarations).toContain('readonly clamp: typeof fn_clamp;');
+  });
+
+  it('type-checks curried mapper factories with positional and inline named parameters', () => {
+    const bindings = [
+      {
+        alias: 'fn_clamp', functionKey: 'clamp', functionKind: 'point-map' as const,
+        sourceBody: 'function clamp(min: number, max: number): NumericMapper { return (value, point) => value === null ? point : point.withValue(Math.min(max, Math.max(min, value))); }',
+      },
+      {
+        alias: 'fn_normalize', functionKey: 'normalize', functionKind: 'point-map' as const,
+        sourceBody: 'function normalize(config: { input_min: number; input_max: number; output_min?: number; output_max?: number }): NumericMapper { return (value, point) => point.withValue(value); }',
+      },
+    ];
+    const result = compileAnalysisProgram({
+      sourceBody: 'return event.values().map(udf.mappers.clamp(0, 100), context).map(udf.mappers.normalize({ input_min: 0, input_max: 100 }), context);',
+      inputAliases: ['event'],
+      functionBindings: bindings,
+      semantic: true,
+    });
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it('does not infer factory signatures that rely on unresolved user-defined configuration types', () => {
+    expect(inferAnalysisFunctionKind('function normalize(config: NormalizeOptions): NumericMapper { return (value, point) => point; }')).toBeNull();
+  });
+
+
+  it('creates typed factory templates for every reusable function category', () => {
+    const expectations: Array<[Parameters<typeof createAnalysisFunctionFactoryTemplate>[0], string]> = [
+      ['event-filter', 'EventPredicate'],
+      ['point-map', 'NumericMapper'],
+      ['point-filter', 'NumericPredicate'],
+      ['map-filter', 'NumericMapFilter'],
+      ['window-transform', 'WindowTransformer'],
+      ['reducer', 'SeriesReducer'],
+      ['series-transform', 'SeriesTransformer'],
+    ];
+    for (const [kind, callbackType] of expectations) {
+      const source = createAnalysisFunctionFactoryTemplate(kind, `factory_${kind.replaceAll('-', '_')}`);
+      expect(source).toContain(`): ${callbackType}`);
+      expect(source).not.toContain('AnalysisOptions');
+      expect(inferAnalysisFunction(source)).toMatchObject({ functionKind: kind, mode: 'factory' });
+    }
+  });
+
+  it('keeps direct templates options-free', () => {
+    const direct = createAnalysisFunctionTemplate('point-map', 'direct_mapper');
+    expect(direct).not.toContain('AnalysisOptions');
+    expect(inferAnalysisFunction(direct)).toMatchObject({ functionKind: 'point-map', mode: 'direct' });
+
+  });
+
+
+  it('keeps UDF factory arguments separate from transform-window operation context', () => {
+    const context = inferPipelineContext('EventSeries', [
+      { operation: 'values' },
+      {
+        operation: 'transformWindow',
+        functionBinding: 'configured_window',
+        arguments: [{ minimum_points: 2 }],
+        windowSize: 4,
+        options: { alignment: 'centered' },
+      },
+    ]);
+    expect(context).toEqual({ rowsBefore: 1, rowsAfter: 2, exact: true });
+  });
+
 });

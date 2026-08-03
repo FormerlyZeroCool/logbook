@@ -25,12 +25,13 @@ export function AnalysisFunctionsPage() {
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
   const [templateKind, setTemplateKind] = useState<AnalysisFunctionKind>('point-map');
+  const [factoryTemplate, setFactoryTemplate] = useState(false);
 
   const create = useMutation({
     mutationFn: () => api.createAnalysisFunction({ name, functionKey: key, functionKind: templateKind }),
     onSuccess: (item) => {
       void queryClient.invalidateQueries({ queryKey: ['analysis-functions'] });
-      navigate(`/analysis-functions/${item.id}`);
+      navigate(`/analysis-functions/${item.id}${factoryTemplate ? '?template=factory' : ''}`);
     },
   });
 
@@ -64,6 +65,10 @@ export function AnalysisFunctionsPage() {
           />
           <button type="submit" disabled={create.isPending}>Create from selected template</button>
         </div>
+        <label className="analysis-factory-template-toggle">
+          <input type="checkbox" checked={factoryTemplate} onChange={(event) => setFactoryTemplate(event.target.checked)} />
+          Start with typed factory parameters
+        </label>
         <div className="analysis-template-buttons" role="radiogroup" aria-label="UDF template">
           {FUNCTION_TEMPLATES.map((template) => <button
             key={template.value}

@@ -64,7 +64,7 @@ def wait_for_generated_declaration_state(page: Page, state: str) -> None:
 def assert_generated_declarations_hidden(page: Page) -> None:
     root = page.locator(".logbook-analysis-editor").first
     root.wait_for(state="visible", timeout=30_000)
-    assert root.get_attribute("data-editor-schema") == "v13", "The browser is serving a stale analysis editor bundle"
+    assert root.get_attribute("data-editor-schema") == "v15", "The browser is serving a stale analysis editor bundle"
     state = root.get_attribute("data-generated-declarations")
     visible_editor_text = page.locator(".monaco-editor .view-lines").first.inner_text()
     assert "function " in visible_editor_text, "The transform/function signature must remain visible"
@@ -161,7 +161,6 @@ def run() -> None:
   value: number | null,
   point: NumericPoint,
   index: number,
-  options: AnalysisOptions,
   context: AnalysisContext,
 ): boolean {
   return value !== null;
@@ -171,7 +170,6 @@ def run() -> None:
   value: number | null,
   point: NumericPoint,
   index: number,
-  options: AnalysisOptions,
   context: AnalysisContext,
 ): NumericPoint | null {
   return value !== null && value > 0 ? point.withValue(value * 2) : null;
@@ -181,10 +179,14 @@ def run() -> None:
   value: number | null,
   point: NumericPoint,
   index: number,
-  options: AnalysisOptions,
   context: AnalysisContext,
 ): NumericPoint {
   return point.withValue((value ?? 0) * 2);
+}""")
+        page.get_by_text("Inferred: point-map", exact=True).wait_for(timeout=15_000)
+        replace_monaco(page, """function candidate(config: { factor: number }): NumericMapper {
+  return (value, point, index, context): NumericPoint =>
+    point.withValue((value ?? 0) * config.factor);
 }""")
         page.get_by_text("Inferred: point-map", exact=True).wait_for(timeout=15_000)
         page.get_by_text("0 errors").wait_for(timeout=15_000)
@@ -247,7 +249,19 @@ def run() -> None:
         baseline = json.loads(baseline_values)
         assert any(value is not None for value in baseline), "The selected event series has no numeric values to transform"
 
-        replace_monaco(page, f"return event.values().map(udf.mappers.{saved_udf_key});", settle_ms=0)
+        replace_monaco(page, "return event.values().map(udf.mappers.clamp(0, 10), context);", settle_ms=0)
+        page.get_by_role("button", name="Run", exact=True).click()
+        clamp_expected = [None if value is None else min(10, max(0, value)) for value in baseline]
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            page.wait_for_timeout(200)
+            current = chart.get_attribute("data-analysis-values")
+            if current is not None and json.loads(current) == clamp_expected:
+                break
+        else:
+            raise AssertionError("Typed curried clamp mapper did not update the plotted values")
+
+        replace_monaco(page, f"return event.values().map(udf.mappers.{saved_udf_key}({{ factor: 2 }}), context);", settle_ms=0)
         page.get_by_role("button", name="Run", exact=True).click()
         udf_expected = [0 if value is None else value * 2 for value in baseline]
         deadline = time.time() + 30
@@ -260,7 +274,7 @@ def run() -> None:
             raise AssertionError("map did not infer and execute the saved point mapper")
 
         # Click Run immediately after editing. This catches execution of a stale debounced source body.
-        replace_monaco(page, "return event.values().map((value, point, index, options) => point.withValue((value ?? 0) * 1000));", settle_ms=0)
+        replace_monaco(page, "return event.values().map((value, point, index, context) => point.withValue((value ?? 0) * 1000), context);", settle_ms=0)
         page.get_by_role("button", name="Run", exact=True).click()
         deadline = time.time() + 30
         expected = [(0 if value is None else value) * 1000 for value in baseline]

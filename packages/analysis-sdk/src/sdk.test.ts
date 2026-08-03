@@ -93,4 +93,17 @@ describe('analysis SDK', () => {
     }, 1_000_000).values();
     expect(series.mapValues((value) => value * 1000).points.map((point) => point.value)).toEqual([2000, null, -3000]);
   });
+
+  it('uses typed curried mapper parameters without losing point metadata', () => {
+    const series = new EventSeries(input, 1_000_000).values();
+    const clamp = (min: number, max: number) => (
+      value: number | null,
+      point: typeof series.points[number],
+    ) => value === null ? point : point.withValue(Math.min(max, Math.max(min, value)));
+    const output = series.map(clamp(0, 1));
+    expect(output.points.map((point) => point.value)).toEqual([0, 1, 0, 0, 1, 0]);
+    expect(output.points.map((point) => point.eventId)).toEqual(series.points.map((point) => point.eventId));
+  });
+
+
 });

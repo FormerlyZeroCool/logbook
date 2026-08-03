@@ -2,10 +2,9 @@
 
 Shared immutable class SDK, TypeScript authoring contract, pipeline model, and guest-runtime bootstrap for Logbook analysis programs.
 
-## Point-oriented mapping
+## Point-preserving mapping
 
-`NumericSeries.map` is point-preserving by contract. A mapper receives the
-current value and complete immutable point, then returns a `NumericPoint`:
+`NumericSeries.map` accepts a mapper that returns a complete `NumericPoint`:
 
 ```ts
 return event.values().map((value, point) =>
@@ -13,65 +12,114 @@ return event.values().map((value, point) =>
 );
 ```
 
-Saved mapper functions use the same contract and can be passed directly:
-
-```ts
-return event.values().map(udf.mappers.double_value);
-```
-
-Returning the complete point preserves its timestamp, event ID, note, text
-value, requested-range state, calendar bucket information, and future metadata.
-Use `point.withValue(...)` when only the numeric value changes.
-
-For short scalar arithmetic, `mapValues` is available. It always applies the
-returned value through the original point's `withValue` method and leaves null
-rows unchanged:
+Returning the point preserves its timestamp, event ID, note, text value,
+requested-range state, calendar metadata, and future metadata fields. Use
+`mapValues` only for short scalar arithmetic where null points should remain
+null automatically:
 
 ```ts
 return event.values().mapValues((value) => value * 1000);
 ```
-
-A mapper that returns a number, plain object, `undefined`, `NaN`, or infinity is
-rejected by `map`; reusable mapper UDFs must return `NumericPoint`.
 
 ## Reusable functions
 
 Every saved or session function appears under one frozen typed `udf` object:
 
 ```ts
-udf.mappers.scale
+udf.mappers.identity
 udf.filters.positive_only
 udf.reducers.mean
 udf.window_transforms.trailing_mean
+udf.map_filters.normalize_and_drop_invalid
+udf.series_transforms.label_series
 ```
 
-Advanced function kinds remain available under `udf.map_filters` and `udf.series_transforms`.
+Function keys use lowercase letters, numbers, and underscores. Hyphens and `$`
+aliases are not part of the public UDF API.
 
-### Reducers and displayed scalar results
+### Typed configurable UDFs
 
-Reducer callbacks may return a finite number, a string, or `null`:
+Configuration is expressed by normal TypeScript parameters. A configurable UDF
+is a factory that returns its category's callback type:
 
 ```ts
-return event.values().reduce((values) =>
-  values.some((value) => value !== null) ? 'has values' : 'empty',
+function clamp(min: number, max: number): NumericMapper {
+  if (min > max) throw new Error('min must be less than or equal to max');
+
+  return (value, point): NumericPoint =>
+    value === null
+      ? point
+      : point.withValue(Math.min(max, Math.max(min, value)));
+}
+```
+
+It remains in `udf.mappers` and is self-documenting at the call site:
+
+```ts
+return event.values().map(udf.mappers.clamp(0, 100));
+```
+
+More complex configuration can use an inline named object type:
+
+```ts
+function normalize(config: {
+  input_min: number;
+  input_max: number;
+  output_min?: number;
+  output_max?: number;
+}): NumericMapper {
+  const outputMin = config.output_min ?? 0;
+  const outputMax = config.output_max ?? 1;
+
+  return (value, point) => {
+    if (value === null) return point;
+    const ratio = (value - config.input_min) / (config.input_max - config.input_min);
+    return point.withValue(outputMin + ratio * (outputMax - outputMin));
+  };
+}
+```
+
+```ts
+return event.values().map(
+  udf.mappers.normalize({
+    input_min: 0,
+    input_max: 500,
+    output_min: -1,
+    output_max: 1,
+  }),
 );
 ```
 
-`reduce` wraps the result in `ScalarValue`, which the Explore Plot section renders as a prominent scalar. Numeric reducer results retain the series unit; string results do not carry a numeric unit. Raw top-level numbers, strings, and `null` are also normalized to scalar output.
+Inline primitive, literal, array, tuple, union, and object-literal parameter
+types are supported. Named user-defined configuration types are intentionally
+deferred until the function library has declaration dependency tracking and
+versioning.
 
-Function keys use lowercase letters, numbers, and underscores. Hyphens are not accepted for new keys and legacy hyphenated keys are normalized to underscores by the database migration.
+The callback aliases used for category inference are:
 
+```ts
+NumericMapper       // NumericPoint
+NumericPredicate    // boolean
+EventPredicate      // boolean
+NumericMapFilter    // NumericPoint | null
+WindowTransformer   // NumericPoint
+SeriesReducer       // number | string | null
+SeriesTransformer   // AnalysisResult
+```
 
-### Map/filter functions
+A direct no-configuration callback remains valid. Existing saved callbacks that
+receive `AnalysisOptions` remain executable for compatibility, but new templates
+and built-in configurable functions use typed factory parameters.
 
-A map/filter uses the scalar point callback parameters and returns either a complete point or `null`:
+## Map/filter functions
+
+A map/filter returns a complete point to keep it or `null` to remove it:
 
 ```ts
 function keep_positive(
   value: number | null,
   point: NumericPoint,
   index: number,
-  options: AnalysisOptions,
   context: AnalysisContext,
 ): NumericPoint | null {
   return value !== null && value > 0
@@ -80,31 +128,38 @@ function keep_positive(
 }
 ```
 
-Use it through `mapFilter`:
-
 ```ts
 return event.values().mapFilter(udf.map_filters.keep_positive);
 ```
 
-Returning `null` drops the row. Returning a `NumericPoint` keeps the returned timestamp and metadata. Legacy `MapFilterResult` revisions remain executable for backward compatibility, but new templates use `NumericPoint | null`.
+## Window transforms
 
-## Signature inference
-
-Reusable-function revisions persist the complete function declaration. Template buttons only provide starting signatures; the saved category is inferred from the actual parameter and return types.
-
-Window transforms use a distinct point-returning contract:
+Window transforms receive the requested window size and return a point anchored
+to the appropriate input row:
 
 ```ts
 function trailing_mean(
   window: NumericWindow,
   windowSize: number,
-  options: AnalysisOptions,
   context: AnalysisContext,
 ): NumericPoint {
   const values = window.validValues();
-  const value = values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
+  const value = values.length
+    ? values.reduce((sum, item) => sum + item, 0) / values.length
+    : null;
   return window.anchorPoint.withValue(value);
 }
 ```
 
-The `windowSize` parameter is the requested size passed to `transformWindow`, while `window.actualSize` reports the number of points available for the current window.
+## Reducers and scalar output
+
+Reducers may return a finite number, string, or `null`:
+
+```ts
+return event.values().reduce((values) =>
+  values.some((value) => value !== null) ? 'has values' : 'empty',
+);
+```
+
+The Explore Plot section renders the result as a scalar. Numeric results retain
+the series unit; string results do not carry a numeric unit.

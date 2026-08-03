@@ -6,14 +6,21 @@ import { NumericWindow } from './NumericWindow.js';
 import { ScalarValue } from './ScalarValue.js';
 
 export type SeriesScope = 'visible' | 'all';
-export type ValueMapper = (value: number, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
-export type Mapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
+export type ValueMapper = (value: number, point: NumericPoint, index: number, context: unknown) => number | null;
+export type Mapper = (value: number | null, point: NumericPoint, index: number, context: unknown) => NumericPoint;
 export type PointMapper = Mapper;
-export type PointOnlyMapper = (point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
-export type Predicate = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => boolean;
-export type MapFilterMapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint | null | MapFilterResult;
-export type WindowMapper = (window: NumericWindow, windowSize: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
-export type Reducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: Record<string, unknown>, context: unknown) => number | string | null;
+export type PointOnlyMapper = (point: NumericPoint, index: number, context: unknown) => NumericPoint;
+export type Predicate = (value: number | null, point: NumericPoint, index: number, context: unknown) => boolean;
+export type MapFilterMapper = (value: number | null, point: NumericPoint, index: number, context: unknown) => NumericPoint | null | MapFilterResult;
+export type WindowMapper = (window: NumericWindow, windowSize: number, context: unknown) => NumericPoint;
+export type Reducer = (values: readonly (number | null)[], points: readonly NumericPoint[], context: unknown) => number | string | null;
+
+type LegacyValueMapper = (value: number, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => number | null;
+type LegacyPointOnlyMapper = (point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
+type LegacyPredicate = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => boolean;
+type LegacyMapFilterMapper = (value: number | null, point: NumericPoint, index: number, options: Record<string, unknown>, context: unknown) => NumericPoint | null | MapFilterResult;
+type LegacyWindowMapper = (window: NumericWindow, windowSize: number, options: Record<string, unknown>, context: unknown) => NumericPoint;
+type LegacyReducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: Record<string, unknown>, context: unknown) => number | string | null;
 
 function selected(points: readonly NumericPoint[], scope: SeriesScope = 'visible'): NumericPoint[] {
   return scope === 'all' ? [...points] : points.filter((point) => point.inRequestedRange);
@@ -46,9 +53,9 @@ export class NumericSeries {
    * point—not only its value—preserves event identity, timestamps, notes, unit
    * context, requested-range flags, and future point metadata.
    */
-  map(mapper: Mapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  map(mapper: Mapper, context?: unknown): NumericSeries {
     return new NumericSeries(this.points.map((point, index) => {
-      const mapped = mapper(point.value, point, index, options, context);
+      const mapped = mapper(point.value, point, index, context);
       if (!(mapped instanceof NumericPoint)) {
         throw new AnalysisRuntimeError('invalid_point_map_result', 'map must return a NumericPoint for every row, usually point.withValue(...)');
       }
@@ -58,17 +65,31 @@ export class NumericSeries {
   }
 
   /** Scalar shorthand that always preserves the original point metadata. */
-  mapValues(mapper: ValueMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  mapValues(mapper: ValueMapper, context?: unknown): NumericSeries;
+  mapValues(mapper: LegacyValueMapper, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  mapValues(mapper: ValueMapper | LegacyValueMapper, contextOrOptions?: unknown, legacyContext?: unknown): NumericSeries {
+    const legacy = mapper.length >= 5;
+    const options = legacy && typeof contextOrOptions === 'object' && contextOrOptions !== null ? contextOrOptions as Record<string, unknown> : {};
+    const context = legacy ? legacyContext : contextOrOptions;
     return new NumericSeries(this.points.map((point, index) => {
       if (point.value === null) return point;
-      const value = mapper(point.value, point, index, options, context);
+      const value = legacy
+        ? (mapper as LegacyValueMapper)(point.value, point, index, options, context)
+        : (mapper as ValueMapper)(point.value, point, index, context);
       return point.withValue(assertFiniteNumber(value, 'mapValues'));
     }), this.label, this.unit, this.key);
   }
 
-  mapPoints(mapper: PointOnlyMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  mapPoints(mapper: PointOnlyMapper, context?: unknown): NumericSeries;
+  mapPoints(mapper: LegacyPointOnlyMapper, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  mapPoints(mapper: PointOnlyMapper | LegacyPointOnlyMapper, contextOrOptions?: unknown, legacyContext?: unknown): NumericSeries {
+    const legacy = mapper.length >= 4;
+    const options = legacy && typeof contextOrOptions === 'object' && contextOrOptions !== null ? contextOrOptions as Record<string, unknown> : {};
+    const context = legacy ? legacyContext : contextOrOptions;
     return new NumericSeries(this.points.map((point, index) => {
-      const mapped = mapper(point, index, options, context);
+      const mapped = legacy
+        ? (mapper as LegacyPointOnlyMapper)(point, index, options, context)
+        : (mapper as PointOnlyMapper)(point, index, context);
       if (!(mapped instanceof NumericPoint)) {
         throw new AnalysisRuntimeError('invalid_point_map_result', 'mapPoints must return a NumericPoint, usually point.withValue(...)');
       }
@@ -77,18 +98,32 @@ export class NumericSeries {
     }), this.label, this.unit, this.key);
   }
 
-  filter(predicate: Predicate, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  filter(predicate: Predicate, context?: unknown): NumericSeries;
+  filter(predicate: LegacyPredicate, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  filter(predicate: Predicate | LegacyPredicate, contextOrOptions?: unknown, legacyContext?: unknown): NumericSeries {
+    const legacy = predicate.length >= 5;
+    const options = legacy && typeof contextOrOptions === 'object' && contextOrOptions !== null ? contextOrOptions as Record<string, unknown> : {};
+    const context = legacy ? legacyContext : contextOrOptions;
     return new NumericSeries(this.points.filter((point, index) => {
-      const result = predicate(point.value, point, index, options, context);
+      const result = legacy
+        ? (predicate as LegacyPredicate)(point.value, point, index, options, context)
+        : (predicate as Predicate)(point.value, point, index, context);
       if (typeof result !== 'boolean') throw new AnalysisRuntimeError('invalid_predicate_result', 'filter must return a boolean');
       return result;
     }), this.label, this.unit, this.key);
   }
 
-  mapFilter(mapper: MapFilterMapper, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  mapFilter(mapper: MapFilterMapper, context?: unknown): NumericSeries;
+  mapFilter(mapper: LegacyMapFilterMapper, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  mapFilter(mapper: MapFilterMapper | LegacyMapFilterMapper, contextOrOptions?: unknown, legacyContext?: unknown): NumericSeries {
+    const legacy = mapper.length >= 5;
+    const options = legacy && typeof contextOrOptions === 'object' && contextOrOptions !== null ? contextOrOptions as Record<string, unknown> : {};
+    const context = legacy ? legacyContext : contextOrOptions;
     const points: NumericPoint[] = [];
     this.points.forEach((point, index) => {
-      const result = mapper(point.value, point, index, options, context);
+      const result = legacy
+        ? (mapper as LegacyMapFilterMapper)(point.value, point, index, options, context)
+        : (mapper as MapFilterMapper)(point.value, point, index, context);
       if (result === null) return;
       if (result instanceof NumericPoint) {
         assertFiniteNumber(result.value, 'mapFilter');
@@ -105,7 +140,9 @@ export class NumericSeries {
     return new NumericSeries(points, this.label, this.unit, this.key);
   }
 
-  transformWindow(transformer: WindowMapper, windowSize: number, options: { alignment?: 'trailing' | 'centered' | 'leading'; partial?: boolean } & Record<string, unknown> = {}, context?: unknown): NumericSeries {
+  transformWindow(transformer: WindowMapper, windowSize: number, options?: { alignment?: 'trailing' | 'centered' | 'leading'; partial?: boolean } & Record<string, unknown>, context?: unknown): NumericSeries;
+  transformWindow(transformer: LegacyWindowMapper, windowSize: number, options?: { alignment?: 'trailing' | 'centered' | 'leading'; partial?: boolean } & Record<string, unknown>, context?: unknown): NumericSeries;
+  transformWindow(transformer: WindowMapper | LegacyWindowMapper, windowSize: number, options: { alignment?: 'trailing' | 'centered' | 'leading'; partial?: boolean } & Record<string, unknown> = {}, context?: unknown): NumericSeries {
     if (!Number.isInteger(windowSize) || windowSize < 1) throw new AnalysisRuntimeError('invalid_window_size', 'windowSize must be an integer greater than zero');
     const alignment = options.alignment ?? 'trailing';
     const partial = options.partial ?? false;
@@ -121,7 +158,9 @@ export class NumericSeries {
       const points = this.points.slice(startIndex, endIndexExclusive);
       if (!partial && (requestedStart < 0 || requestedEnd > this.points.length)) return anchorPoint.withValue(null);
       const window = new NumericWindow({ points, anchorPoint, anchorIndex, startIndex, endIndexExclusive, requestedSize: windowSize });
-      const transformed = transformer(window, windowSize, options, context);
+      const transformed = transformer.length >= 4
+        ? (transformer as LegacyWindowMapper)(window, windowSize, options, context)
+        : (transformer as WindowMapper)(window, windowSize, context);
       if (!(transformed instanceof NumericPoint)) {
         throw new AnalysisRuntimeError('invalid_window_transform_result', 'transformWindow must return a NumericPoint, usually window.anchorPoint.withValue(...)');
       }
@@ -131,16 +170,24 @@ export class NumericSeries {
     return new NumericSeries(output, this.label, this.unit, this.key);
   }
 
-  windowedMap(transformer: WindowMapper, windowSize: number, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
-    return this.transformWindow(transformer, windowSize, options, context);
+  windowedMap(transformer: WindowMapper, windowSize: number, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  windowedMap(transformer: LegacyWindowMapper, windowSize: number, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  windowedMap(transformer: WindowMapper | LegacyWindowMapper, windowSize: number, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+    return this.transformWindow(transformer as WindowMapper, windowSize, options, context);
   }
-  windowed_map(transformer: WindowMapper, windowSize: number, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
-    return this.transformWindow(transformer, windowSize, options, context);
+  windowed_map(transformer: WindowMapper, windowSize: number, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  windowed_map(transformer: LegacyWindowMapper, windowSize: number, options?: Record<string, unknown>, context?: unknown): NumericSeries;
+  windowed_map(transformer: WindowMapper | LegacyWindowMapper, windowSize: number, options: Record<string, unknown> = {}, context?: unknown): NumericSeries {
+    return this.transformWindow(transformer as WindowMapper, windowSize, options, context);
   }
 
-  reduce(reducer: Reducer, options: { scope?: SeriesScope } & Record<string, unknown> = {}, context?: unknown): ScalarValue {
+  reduce(reducer: Reducer, options?: { scope?: SeriesScope } & Record<string, unknown>, context?: unknown): ScalarValue;
+  reduce(reducer: LegacyReducer, options?: { scope?: SeriesScope } & Record<string, unknown>, context?: unknown): ScalarValue;
+  reduce(reducer: Reducer | LegacyReducer, options: { scope?: SeriesScope } & Record<string, unknown> = {}, context?: unknown): ScalarValue {
     const points = selected(this.points, options.scope);
-    const result = reducer(points.map((point) => point.value), points, options, context);
+    const result = reducer.length >= 4
+      ? (reducer as LegacyReducer)(points.map((point) => point.value), points, options, context)
+      : (reducer as Reducer)(points.map((point) => point.value), points, context);
     if (typeof result !== 'number' && typeof result !== 'string' && result !== null) {
       throw new AnalysisRuntimeError('invalid_reduce_result', 'reduce must return a finite number, string, or null');
     }
@@ -148,7 +195,7 @@ export class NumericSeries {
     return new ScalarValue(result, this.label, typeof result === 'number' ? this.unit : null);
   }
 
-  filterNulls(): NumericSeries { return this.filter((value) => value !== null); }
+  filterNulls(): NumericSeries { return this.filter((value: number | null) => value !== null); }
   lag(offset = 1): NumericSeries {
     if (!Number.isInteger(offset) || offset < 1) throw new AnalysisRuntimeError('invalid_offset', 'lag offset must be a positive integer');
     return new NumericSeries(this.points.map((point, index) => point.withValue(this.points[index - offset]?.value ?? null)), this.label, this.unit, this.key);

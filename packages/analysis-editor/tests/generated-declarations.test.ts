@@ -9,7 +9,7 @@ test('generated UDF declarations are loaded as an extra library, never inserted 
   const adapters = read('src/document-adapters.ts');
 
   assert.match(editor, /Show generated declarations/);
-  assert.match(editor, /data-editor-schema=\"v13\"/);
+  assert.match(editor, /data-editor-schema=\"v15\"/);
   assert.match(editor, /document\.generatedDeclarations/);
   assert.match(editor, /Generated UDF declarations/);
   assert.match(editor, /documentVersion = stableHash\(document\.key\)/);
@@ -21,7 +21,7 @@ test('generated UDF declarations are loaded as an extra library, never inserted 
   assert.match(adapters, /extraLibraries: \[\{/);
   assert.match(adapters, /udf-\$\{declarationHash\}\.d\.ts/);
   assert.match(adapters, /generatedDeclarations: declarations/);
-  assert.match(adapters, /program-v13:/);
+  assert.match(adapters, /program-v15:/);
   assert.doesNotMatch(adapters, /export \{\};/);
   assert.doesNotMatch(adapters, /prependGeneratedModuleScope/);
 });
@@ -35,13 +35,14 @@ test('function signatures stay visible and are persisted for UDF documents', () 
   assert.match(editor, /lineNumbers: 'on'/);
   assert.match(adapters, /extractEditableFunctionSource/);
   assert.match(adapters, /isCompleteAnalysisFunctionSource/);
-  assert.match(adapters, /function-signature-v13:/);
+  assert.match(adapters, /function-signature-v15:/);
 });
 
 test('program editor document identity includes the public udf key and kind', () => {
   const programEditor = read('src/AnalysisProgramEditor.tsx');
   assert.match(programEditor, /binding\.functionKey \?\? binding\.alias/);
   assert.match(programEditor, /binding\.functionKind/);
+  assert.match(programEditor, /binding\.sourceBody/);
 });
 
 test('the editor library declares one nested typed udf object', () => {

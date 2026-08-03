@@ -146,7 +146,7 @@ export function AnalysisTypeScriptEditor({
   const warningCount = allDiagnostics.filter((item) => item.severity === 'warning').length;
   const rootClassName = ['logbook-analysis-editor', className].filter(Boolean).join(' ');
 
-  return <div className={rootClassName} data-editor-schema="v13" data-generated-declarations={hasGeneratedDeclarations ? (showGeneratedDeclarations ? 'visible' : 'hidden') : 'absent'}>
+  return <div className={rootClassName} data-editor-schema="v15" data-generated-declarations={hasGeneratedDeclarations ? (showGeneratedDeclarations ? 'visible' : 'hidden') : 'absent'}>
     <div className="logbook-analysis-editor-toolbar">
       <span><strong>{toolbarLabel}</strong> · strict · browser language service · ⌘/Ctrl+S save · ⌘/Ctrl+Enter run</span>
       {hasGeneratedDeclarations && <label className="logbook-analysis-editor-generated-toggle">

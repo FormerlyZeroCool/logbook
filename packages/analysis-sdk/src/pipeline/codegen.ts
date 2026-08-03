@@ -26,9 +26,15 @@ function stepCode(step: PipelineStep): string {
     const functionReference = canonical === 'map'
       ? analysisFunctionReference(step.functionBinding, 'point-map')
       : analysisFunctionIdentifier(step.functionBinding);
-    const args: string[] = [functionReference];
+    const factoryArguments = step.arguments ?? [];
+    const callable = factoryArguments.length > 0
+      ? `${functionReference}(${factoryArguments.map(literal).join(', ')})`
+      : functionReference;
+    const args: string[] = [callable];
     if (step.windowSize !== undefined) args.push(String(step.windowSize));
-    if (step.options && Object.keys(step.options).length > 0) args.push(literal(step.options));
+    // options configure the series operation itself (window alignment, reduce scope),
+    // never the UDF. UDF configuration belongs in typed factoryArguments.
+    if (step.options && Object.keys(step.options).length > 0 && ['transformWindow', 'reduce'].includes(canonical)) args.push(literal(step.options));
     return `.${canonical}(${args.join(', ')})`;
   }
   return `.${canonical}(${(step.arguments ?? []).map(literal).join(', ')})`;

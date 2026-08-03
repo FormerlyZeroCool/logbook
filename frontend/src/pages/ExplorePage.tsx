@@ -218,6 +218,17 @@ export function ExplorePage() {
     return [...byKey.values()];
   }, [functions.data, localFunctions]);
 
+  const editorFunctionBindings = useMemo(() => functionCatalog.map((item) => {
+    const local = localFunctions.find((draft) => draft.functionKey === item.function_key);
+    const savedSource = (item as AnalysisFunctionSummary & { callable_source_body?: string }).callable_source_body;
+    return {
+      alias: analysisFunctionIdentifier(item.function_key),
+      functionKey: item.function_key,
+      functionKind: item.function_kind,
+      ...(local?.sourceBody ? { sourceBody: local.sourceBody } : savedSource ? { sourceBody: savedSource } : {}),
+    };
+  }), [functionCatalog, localFunctions]);
+
   const bindingKinds = useMemo(
     () => Object.fromEntries(functionCatalog.map((item) => [item.function_key, item.function_kind])),
     [functionCatalog],
@@ -517,7 +528,7 @@ export function ExplorePage() {
                     sourceBody={code}
                     onSourceBodyChange={(nextCode) => { sourceBodyRef.current = nextCode; setCode(nextCode); }}
                     inputAliases={inputs.map((input) => input.alias)}
-                    functionBindings={functionCatalog.map((item) => ({ alias: analysisFunctionIdentifier(item.function_key), functionKey: item.function_key, functionKind: item.function_kind }))}
+                    functionBindings={editorFunctionBindings}
                     onTypeDiagnosticsChange={setEditorDiagnostics}
                     modelKey={explorationId ?? 'new-exploration'}
                     onRunShortcut={() => { if (!execute.isPending && !sourceDiagnostics.some((diagnostic) => diagnostic.severity === 'error')) execute.mutate(); }}
@@ -535,8 +546,8 @@ export function ExplorePage() {
               savingId={savingFunctionId}
               onChange={(changed) => setLocalFunctions((current) => current.map((item) => item.id === changed.id ? changed : item))}
               onSelect={setSelectedLocalFunctionId}
-              onCreate={(kind) => {
-                const created = createSessionFunction(kind);
+              onCreate={(kind, factory) => {
+                const created = createSessionFunction(kind, factory);
                 setLocalFunctions((current) => [...current, created]);
                 setSelectedLocalFunctionId(created.id);
               }}

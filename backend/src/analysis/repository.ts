@@ -181,7 +181,18 @@ export class AnalysisRepository {
 
   async listFunctions(): Promise<unknown[]> {
     const result = await this.db.query(`
-      SELECT f.*, draft.revision AS draft_revision, draft.validation_status AS draft_validation_status,
+      SELECT f.id,
+             f.function_key,
+             f.name,
+             f.description,
+             COALESCE(published.output_metadata->>'inferredFunctionKind', draft.output_metadata->>'inferredFunctionKind', f.function_kind) AS function_kind,
+             f.is_system,
+             f.draft_revision_id,
+             f.published_revision_id,
+             f.created_at,
+             f.updated_at,
+             COALESCE(published.source_body, draft.source_body) AS callable_source_body,
+             draft.revision AS draft_revision, draft.validation_status AS draft_validation_status,
              published.revision AS published_revision, published.validation_status AS published_validation_status
       FROM analysis_functions f
       LEFT JOIN analysis_function_revisions draft ON draft.id=f.draft_revision_id

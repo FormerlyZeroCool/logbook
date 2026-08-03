@@ -3,18 +3,23 @@ import { analysisFunctionCollection, analysisFunctionPropertyIdentifier, functio
 
 export const ANALYSIS_SDK_DECLARATIONS = `
 type AnalysisResult = number | string | null | ScalarValue | NumericSeries | SeriesSet;
+/** @deprecated UDF configuration belongs in typed factory parameters. Retained only for legacy saved revisions. */
 type AnalysisOptions = Readonly<Record<string, any>>;
+type WindowTransformOptions = Readonly<{ alignment?: WindowAlignment; partial?: boolean }>;
+type ReduceOptions = Readonly<{ scope?: SeriesScope }>;
 type SeriesScope = 'visible' | 'all';
 type DurationUnit = 'milliseconds' | 'seconds' | 'minutes' | 'hours';
 type WindowAlignment = 'trailing' | 'centered' | 'leading';
-type NumericValueMapper = (value: number, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => number | null;
-type NumericMapper = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
+type NumericValueMapper = (value: number, point: NumericPoint, index: number, context: AnalysisContext) => number | null;
+type NumericMapper = (value: number | null, point: NumericPoint, index: number, context: AnalysisContext) => NumericPoint;
 type NumericPointMapper = NumericMapper;
-type NumericPointOnlyMapper = (point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
-type NumericPredicate = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => boolean;
-type NumericMapFilter = (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint | null | MapFilterResult;
-type WindowTransformer = (window: NumericWindow, windowSize: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint;
-type SeriesReducer = (values: readonly (number | null)[], points: readonly NumericPoint[], options: AnalysisOptions, context: AnalysisContext) => number | string | null;
+type NumericPointOnlyMapper = (point: NumericPoint, index: number, context: AnalysisContext) => NumericPoint;
+type NumericPredicate = (value: number | null, point: NumericPoint, index: number, context: AnalysisContext) => boolean;
+type EventPredicate = (event: EventRecord, index: number, context: AnalysisContext) => boolean;
+type NumericMapFilter = (value: number | null, point: NumericPoint, index: number, context: AnalysisContext) => NumericPoint | null | MapFilterResult;
+type WindowTransformer = (window: NumericWindow, windowSize: number, context: AnalysisContext) => NumericPoint;
+type SeriesReducer = (values: readonly (number | null)[], points: readonly NumericPoint[], context: AnalysisContext) => number | string | null;
+type SeriesTransformer = (series: NumericSeries, context: AnalysisContext) => AnalysisResult;
 
 declare class UnitDescriptor {
   constructor(key: string, symbol: string, dimensionKey: string);
@@ -55,6 +60,8 @@ declare class EventSeries {
   timeBetweenStarts(unit?: DurationUnit, options?: AnalysisOptions): NumericSeries;
   /** Forward start-to-start interval attached to the earlier event. */
   timeUntilNextStart(unit?: DurationUnit, options?: AnalysisOptions): NumericSeries;
+  filter(predicate: EventPredicate, context?: AnalysisContext): EventSeries;
+  /** @deprecated Legacy options-bag callback support. New configurable UDFs should return EventPredicate from a typed factory. */
   filter(predicate: (event: EventRecord, index: number, options: AnalysisOptions, context: AnalysisContext) => boolean, options?: AnalysisOptions, context?: AnalysisContext): EventSeries;
   first(options?: { scope?: SeriesScope }): EventRecord | null;
   latest(options?: { scope?: SeriesScope }): EventRecord | null;
@@ -105,30 +112,34 @@ declare class NumericSeries {
   readonly points: readonly NumericPoint[];
   readonly unit: UnitDescriptor | null;
   /** Map every row to a complete immutable point, preserving all returned point metadata. */
-  map(mapper: NumericMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  map(mapper: NumericMapper, context?: AnalysisContext): NumericSeries;
   /** Scalar shorthand. Null rows remain null and every numeric result is applied with point.withValue(...). */
-  mapValues(mapper: NumericValueMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  mapValues(mapper: NumericValueMapper, context?: AnalysisContext): NumericSeries;
   /** Point-first convenience form for inline callbacks. Saved udf.mappers callbacks are value-first and should be passed to map(). */
-  mapPoints(mapper: NumericPointOnlyMapper, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  mapPoints(mapper: NumericPointOnlyMapper, context?: AnalysisContext): NumericSeries;
   /** Keep a point only when the predicate returns true. Numeric zero is never treated as false automatically. */
-  filter(predicate: NumericPredicate, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  filter(predicate: NumericPredicate, context?: AnalysisContext): NumericSeries;
+  /** @deprecated Legacy options-bag callback support. */
+  filter(predicate: (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => boolean, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Transform and keep a returned NumericPoint, or drop the row by returning null. */
-  mapFilter(mapper: NumericMapFilter, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
+  mapFilter(mapper: NumericMapFilter, context?: AnalysisContext): NumericSeries;
+  /** @deprecated Legacy options-bag callback support. */
+  mapFilter(mapper: (value: number | null, point: NumericPoint, index: number, options: AnalysisOptions, context: AnalysisContext) => NumericPoint | null | MapFilterResult, options?: AnalysisOptions, context?: AnalysisContext): NumericSeries;
   /** Apply a trailing, centered, or leading window while preserving the anchor point timestamp and metadata. */
-  transformWindow(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
-  windowedMap(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
-  windowed_map(transformer: WindowTransformer, windowSize: number, options?: AnalysisOptions & { alignment?: WindowAlignment; partial?: boolean }, context?: AnalysisContext): NumericSeries;
+  transformWindow(transformer: WindowTransformer, windowSize: number, options?: WindowTransformOptions, context?: AnalysisContext): NumericSeries;
+  windowedMap(transformer: WindowTransformer, windowSize: number, options?: WindowTransformOptions, context?: AnalysisContext): NumericSeries;
+  windowed_map(transformer: WindowTransformer, windowSize: number, options?: WindowTransformOptions, context?: AnalysisContext): NumericSeries;
   /** Collapse the visible range to a displayed scalar. Reducers may return a finite number, string, or null. Set scope to all only when context rows should participate. */
-  reduce(reducer: SeriesReducer, options?: AnalysisOptions & { scope?: SeriesScope }, context?: AnalysisContext): ScalarValue;
+  reduce(reducer: SeriesReducer, options?: ReduceOptions, context?: AnalysisContext): ScalarValue;
   filterNulls(): NumericSeries;
   lag(offset?: number): NumericSeries;
   lead(offset?: number): NumericSeries;
   difference(offset?: number): NumericSeries;
-  rollingMean(windowSize: number, options?: AnalysisOptions): NumericSeries;
+  rollingMean(windowSize: number, options?: WindowTransformOptions): NumericSeries;
   cumulativeSum(options?: { scope?: SeriesScope }): NumericSeries;
   /** Group points into fixed or calendar-aligned buckets. Supported examples include 15 minutes, 1 hour, 1 day, and 1 week. */
   bucket(interval: string, aggregation?: 'sum' | 'mean' | 'min' | 'max', options?: { timeZone?: string }): NumericSeries;
-  divideByAligned(other: NumericSeries, options?: AnalysisOptions): NumericSeries;
+  divideByAligned(other: NumericSeries): NumericSeries;
   sum(options?: { scope?: SeriesScope }): ScalarValue;
   mean(options?: { scope?: SeriesScope }): ScalarValue;
   median(options?: { scope?: SeriesScope }): ScalarValue;
@@ -187,8 +198,8 @@ declare const process: never;
 declare const require: never;
 `;
 
-export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind; functionKey?: string }[]): string {
-  const legacyDeclarations = bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias));
+export function generateFunctionBindingDeclarations(bindings: readonly { alias: string; functionKind: AnalysisFunctionKind; functionKey?: string; sourceBody?: string }[]): string {
+  const legacyDeclarations = bindings.map((binding) => functionBindingDeclaration(binding.functionKind, binding.alias, binding.sourceBody));
   const groups = {
     mappers: [] as string[],
     filters: [] as string[],

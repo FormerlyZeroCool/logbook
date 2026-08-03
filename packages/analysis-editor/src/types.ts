@@ -4,6 +4,8 @@ export type AnalysisEditorFunctionBinding = {
   alias: string;
   functionKey?: string;
   functionKind: AnalysisFunctionKind;
+  /** Full saved source preserves typed factory parameters in Monaco declarations. */
+  sourceBody?: string;
 };
 
 export type AnalysisEditorExtraLibrary = {
