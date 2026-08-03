@@ -18,6 +18,7 @@ import { api } from '../api';
 import { FunctionBindingEditor } from '../analysis/editor/FunctionBindingEditor';
 import { InputEditor, type ExploreInput } from '../analysis/editor/InputEditor';
 import { PipelineEditor } from '../analysis/editor/PipelineEditor';
+import { openPipelineSession, sourceFromPipelineEdit } from '../analysis/editor/pipeline-code-sync';
 import { SdkReferenceDrawer } from '../analysis/editor/SdkReferenceDrawer';
 import { SessionFunctionWorkbench, createSessionFunction } from '../analysis/editor/SessionFunctionWorkbench';
 import { executeAnalysis } from '../analysis/execution/query-coordinator';
@@ -65,6 +66,10 @@ function defaultPipeline(alias: string = 'event'): PipelineDefinitionV1 {
     outputType: 'NumericSeries',
     queryContext: { mode: 'derived', rowsBefore: 0, rowsAfter: 0, exact: true },
   };
+}
+
+function defaultCode(alias: string = 'event'): string {
+  return generateProgramBody(defaultPipeline(alias));
 }
 
 function useDebounced<T>(value: T, delay: number): T {
@@ -148,7 +153,7 @@ export function ExplorePage() {
     { alias: 'event', eventTypeKey: '', rowsBefore: 0, rowsAfter: 0, contextIsExplicit: false, includeOngoing: true },
   ]);
   const [pipeline, setPipeline] = useState<PipelineDefinitionV1>(defaultPipeline());
-  const [code, setCode] = useState("const values: NumericSeries = event.values();\nreturn values.withLabel('Value');");
+  const [code, setCode] = useState(defaultCode());
   const [localFunctions, setLocalFunctions] = useState<SessionFunctionDraft[]>([]);
   const [selectedLocalFunctionId, setSelectedLocalFunctionId] = useState<string | null>(null);
   const [result, setResult] = useState<SerializedAnalysisResult | null>(null);
@@ -173,13 +178,21 @@ export function ExplorePage() {
     if (!workspace) return;
     setName(workspace.name);
     setDescription(workspace.description);
-    setMode(workspace.mode);
     setAutoRun(workspace.autoRun);
     setRangeMode(workspace.rangeMode);
     setFixedRange(workspace.fixedRange);
     setInputs(workspace.inputs);
-    setPipeline(workspace.pipeline);
     setCode(workspace.code);
+    const openedPipeline = workspace.mode === 'pipeline'
+      ? openPipelineSession(workspace.code)
+      : null;
+    if (openedPipeline?.session) {
+      setPipeline(openedPipeline.session.definition);
+      setMode('pipeline');
+    } else {
+      setPipeline(workspace.pipeline);
+      setMode('code');
+    }
     setLocalFunctions(workspace.localFunctions);
     setSelectedLocalFunctionId(workspace.selectedLocalFunctionId);
   }, [explorationDetail?.id]);
@@ -191,11 +204,24 @@ export function ExplorePage() {
     setProgramId(data.id);
     setName(data.name ?? 'Exploration');
     setDescription(data.description ?? '');
-    setMode(data.editor_mode ?? 'pipeline');
     const revision = data.revisions?.[0];
     if (!revision) return;
-    if (typeof revision.source_body === 'string') setCode(revision.source_body);
-    if (revision.pipeline_definition && typeof revision.pipeline_definition === 'object') setPipeline(revision.pipeline_definition as PipelineDefinitionV1);
+    const revisionSource = typeof revision.source_body === 'string'
+      ? revision.source_body
+      : defaultCode();
+    setCode(revisionSource);
+    const openedPipeline = data.editor_mode === 'pipeline'
+      ? openPipelineSession(revisionSource)
+      : null;
+    if (openedPipeline?.session) {
+      setPipeline(openedPipeline.session.definition);
+      setMode('pipeline');
+    } else {
+      if (revision.pipeline_definition && typeof revision.pipeline_definition === 'object') {
+        setPipeline(revision.pipeline_definition as PipelineDefinitionV1);
+      }
+      setMode('code');
+    }
     if (Array.isArray(revision.inputs)) {
       setInputs((revision.inputs as Array<Record<string, unknown>>).map((input) => ({
         alias: String(input.alias),
@@ -238,9 +264,41 @@ export function ExplorePage() {
     [pipeline, bindingKinds],
   );
   const activePipeline = checkedPipeline.definition ?? pipeline;
-  const sourceBody = mode === 'pipeline' ? generateProgramBody(activePipeline) : code;
+  // Source code is the only durable representation. Pipeline IR is derived
+  // from the latest source when Pipeline is opened and writes back only after
+  // an actual visual edit.
+  const sourceBody = code;
   const sourceBodyRef = useRef(sourceBody);
   sourceBodyRef.current = sourceBody;
+
+  function openPipelineMode(): void {
+    const opened = openPipelineSession(sourceBodyRef.current, bindingKinds);
+    if (!opened.session) {
+      // A visually-created pipeline can be temporarily incomplete (for example,
+      // immediately after adding a function step). Reuse the cached IR only
+      // when it generates the exact current source; otherwise never risk
+      // showing a stale graphical representation.
+      if (sourceFromPipelineEdit(pipeline) === sourceBodyRef.current) {
+        setMode('pipeline');
+        setError(opened.diagnostics[0]?.message ?? 'Complete the highlighted pipeline step.');
+        return;
+      }
+      setError(opened.diagnostics[0]?.message ?? 'This code cannot be represented by the visual pipeline.');
+      setMode('code');
+      return;
+    }
+    setPipeline(opened.session.definition);
+    setMode('pipeline');
+    setError(null);
+  }
+
+  function changePipeline(nextPipeline: PipelineDefinitionV1): void {
+    const nextSource = sourceFromPipelineEdit(nextPipeline);
+    setPipeline(nextPipeline);
+    sourceBodyRef.current = nextSource;
+    setCode(nextSource);
+    setError(null);
+  }
   const debouncedSource = useDebounced(sourceBody, 500);
   const debouncedInputs = useDebounced(inputs, 500);
   const sourceDiagnostics = mode === 'pipeline' ? checkedPipeline.diagnostics : editorDiagnostics;
@@ -255,8 +313,8 @@ export function ExplorePage() {
       rangeMode,
       fixedRange,
       inputs,
-      pipeline: activePipeline,
-      code,
+      pipeline: openPipelineSession(sourceBodyRef.current, bindingKinds).session?.definition ?? activePipeline,
+      code: sourceBodyRef.current,
       localFunctions,
       selectedLocalFunctionId,
       ...overrides,
@@ -264,11 +322,10 @@ export function ExplorePage() {
   }
 
   function referencedFunctionKeys(): string[] {
-    if (mode === 'pipeline') {
-      const bindings = activePipeline.steps.flatMap((step) => typeof step.functionBinding === 'string' ? [step.functionBinding] : []);
-      return Array.from(new Set<string>(bindings));
-    }
-    return functionCatalog.filter((item) => bodyReferences(sourceBody, item.function_key, item.function_kind)).map((item) => item.function_key);
+    const currentSource = sourceBodyRef.current;
+    return functionCatalog
+      .filter((item) => bodyReferences(currentSource, item.function_key, item.function_kind))
+      .map((item) => item.function_key);
   }
 
   async function resolveBindings(): Promise<ResolvedBinding[]> {
@@ -385,15 +442,18 @@ export function ExplorePage() {
         throw new Error(`Publish these functions as passed library revisions before creating a program revision: ${unresolved.map((item) => item.key).join(', ')}`);
       }
       const persisted = await persistWorkspace();
+      const currentSource = sourceBodyRef.current;
+      const parsedPipeline = openPipelineSession(currentSource, bindingKinds).session?.definition;
+      const queryContext = parsedPipeline?.queryContext ?? activePipeline.queryContext;
       const revision = await api.createAnalysisRevision(persisted.programId, {
-        sourceBody,
-        pipelineDefinition: mode === 'pipeline' ? activePipeline : undefined,
+        sourceBody: currentSource,
+        ...(parsedPipeline ? { pipelineDefinition: parsedPipeline } : {}),
         defaultRange: rangeMode === 'rolling' ? '2d' : 'custom',
         outputOptions: {},
         inputs: inputs.map((input) => ({
           ...input,
-          rowsBefore: input.contextIsExplicit ? input.rowsBefore : activePipeline.queryContext.rowsBefore,
-          rowsAfter: input.contextIsExplicit ? input.rowsAfter : activePipeline.queryContext.rowsAfter,
+          rowsBefore: input.contextIsExplicit ? input.rowsBefore : queryContext.rowsBefore,
+          rowsAfter: input.contextIsExplicit ? input.rowsAfter : queryContext.rowsAfter,
         })),
         functionBindings: bindings.map((binding) => ({
           alias: binding.alias,
@@ -497,7 +557,9 @@ export function ExplorePage() {
       <aside>
         <InputEditor inputs={inputs} eventTypes={eventTypes.data ?? []} onChange={(value) => {
           setInputs(value);
-          if (value[0] && pipeline.inputAlias !== value[0].alias) setPipeline({ ...pipeline, inputAlias: value[0].alias });
+          if (mode === 'pipeline' && value[0] && pipeline.inputAlias !== value[0].alias) {
+            changePipeline({ ...pipeline, inputAlias: value[0].alias });
+          }
         }} />
         <FunctionBindingEditor functions={functionCatalog} />
         <SdkReferenceDrawer />
@@ -517,16 +579,16 @@ export function ExplorePage() {
           <summary className="analysis-section-summary"><span>Transformation</span></summary>
           <div className="analysis-section-content">
             <div className="analysis-mode-tabs">
-              <button type="button" className={mode === 'pipeline' ? 'active' : ''} onClick={() => setMode('pipeline')}>Pipeline</button>
-              <button type="button" className={mode === 'code' ? 'active' : ''} onClick={() => { if (mode === 'pipeline') setCode(sourceBody); setMode('code'); }}>Code</button>
+              <button type="button" className={mode === 'pipeline' ? 'active' : ''} onClick={openPipelineMode}>Pipeline</button>
+              <button type="button" className={mode === 'code' ? 'active' : ''} onClick={() => setMode('code')}>Code</button>
             </div>
             {mode === 'pipeline'
-              ? <PipelineEditor definition={activePipeline} functions={functionCatalog} onChange={setPipeline} />
+              ? <PipelineEditor definition={activePipeline} functions={functionCatalog} onChange={changePipeline} />
               : functions.isPending
                 ? <p>Loading saved UDF declarations…</p>
                 : <AnalysisProgramEditor
                     sourceBody={code}
-                    onSourceBodyChange={(nextCode) => { sourceBodyRef.current = nextCode; setCode(nextCode); }}
+                    onSourceBodyChange={(nextCode) => { sourceBodyRef.current = nextCode; setCode(nextCode); setError(null); }}
                     inputAliases={inputs.map((input) => input.alias)}
                     functionBindings={editorFunctionBindings}
                     onTypeDiagnosticsChange={setEditorDiagnostics}

@@ -93,7 +93,10 @@ test('saved function contracts are inferred from editable signatures and window 
   assert.match(functionPage, /Function signature and body/);
   assert.match(sessionEditor, /createAnalysisFunctionTemplate/);
   assert.match(sessionEditor, /inferAnalysisFunctionKind/);
-  assert.match(codegen, /step\.operation === 'mapPoints' && step\.functionBinding[\s\S]*?\? 'map'/);
+  assert.match(
+    codegen,
+    /if \(step\.operation === 'mapPoints' && step\.functionBinding\) return 'map';/,
+  );
 });
 
 test('NumericPoint or null return signatures infer map_filters and null drops the row', () => {
@@ -194,7 +197,10 @@ test('manual Run executes current source and map changes plotted values', () => 
   const renderer = read('src/analysis/renderer/SeriesResult.tsx');
 
   assert.match(explore, /sourceBody:\s*sourceBodyRef\.current/);
-  assert.match(explore, /onSourceBodyChange=\{\(nextCode\) => \{ sourceBodyRef\.current = nextCode; setCode\(nextCode\); \}\}/);
+  assert.match(
+    explore,
+    /onSourceBodyChange=\{\(nextCode\) => \{[\s\S]*?sourceBodyRef\.current = nextCode;[\s\S]*?setCode\(nextCode\);/,
+  );
   assert.doesNotMatch(explore, /sourceBody:\s*debouncedSource/);
   assert.match(hostSeries, /mapped instanceof NumericPoint/);
   assert.match(hostSeries, /return mapped/);
