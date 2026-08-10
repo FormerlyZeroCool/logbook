@@ -291,16 +291,16 @@
 
     border-radius:
       clamp(
-        1rem,
-        min(1.5cqw, 2.7cqh),
-        1.75rem
+        .9rem,
+        min(1.35cqw, 2.43cqh),
+        1.6rem
       );
 
     padding:
       clamp(
-        .8rem,
-        min(1.35cqw, 2.43cqh),
-        1.55rem
+        .65rem,
+        min(1.05cqw, 1.89cqh),
+        1.2rem
       );
   }
 
@@ -322,13 +322,13 @@
   }
 
   .kiosk-panel-header {
-    @apply flex min-w-0 items-start justify-between gap-3;
+    @apply flex min-w-0 items-start justify-between gap-2;
 
     padding-left:
       clamp(
-        .25rem,
-        min(.45cqw, .81cqh),
-        .55rem
+        .15rem,
+        min(.3cqw, .54cqh),
+        .4rem
       );
   }
 
@@ -341,12 +341,12 @@
   .kiosk-panel-header h2 {
     font-size:
       clamp(
-        1.65rem,
-        min(2.8cqw, 5.04cqh),
-        3.5rem
+        1.3rem,
+        min(2.35cqw, 4.23cqh),
+        3rem
       );
 
-    line-height: 1.02;
+    line-height: 1;
 
     @apply min-w-0 truncate font-black tracking-[-0.045em] text-white;
   }
@@ -372,61 +372,68 @@
   .kiosk-value {
     font-size:
       clamp(
-        1.35rem,
-        min(2.25cqw, 4.05cqh),
-        2.8rem
+        1.5rem,
+        min(2.75cqw, 4.95cqh),
+        3.4rem
       );
 
     line-height: 1;
 
     padding:
-      clamp(.45rem, min(.8cqw, 1.44cqh), .9rem)
+      clamp(.25rem, min(.45cqw, .81cqh), .5rem)
       0
-      clamp(.5rem, min(.9cqw, 1.62cqh), 1rem)
-      clamp(.25rem, min(.45cqw, .81cqh), .55rem);
+      clamp(.3rem, min(.55cqw, .99cqh), .6rem)
+      clamp(.15rem, min(.3cqw, .54cqh), .4rem);
 
     @apply min-w-0 truncate font-extrabold tracking-[-0.035em] text-slate-100;
   }
 
   .kiosk-time-rows {
-    @apply mt-auto flex min-h-0 min-w-0 flex-col;
+    @apply flex min-h-0 min-w-0 flex-col;
+
+    flex: 1 1 auto;
 
     gap:
       clamp(
-        .35rem,
-        min(.65cqw, 1.17cqh),
-        .75rem
+        .3rem,
+        min(.5cqw, .9cqh),
+        .65rem
       );
 
     padding-left:
       clamp(
-        .25rem,
-        min(.45cqw, .81cqh),
-        .55rem
+        .15rem,
+        min(.3cqw, .54cqh),
+        .4rem
       );
   }
 
   .kiosk-time-row {
     @apply min-h-0 min-w-0 overflow-hidden border border-slate-800 bg-slate-950/55;
 
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+
     border-radius:
       clamp(
-        .7rem,
-        min(1cqw, 1.8cqh),
-        1.1rem
+        .65rem,
+        min(.9cqw, 1.62cqh),
+        1.05rem
       );
 
     padding:
-      clamp(.6rem, min(.85cqw, 1.53cqh), .95rem)
-      clamp(.7rem, min(1cqw, 1.8cqh), 1.15rem);
+      clamp(.4rem, min(.65cqw, 1.17cqh), .8rem)
+      clamp(.6rem, min(.85cqw, 1.53cqh), 1rem);
   }
 
   .kiosk-time-row span {
     font-size:
       clamp(
-        .7rem,
-        min(.9cqw, 1.62cqh),
-        1.05rem
+        .68rem,
+        min(.8cqw, 1.44cqh),
+        1rem
       );
 
     @apply flex items-center gap-1.5 font-bold uppercase tracking-wider text-slate-500;
@@ -454,45 +461,59 @@
   .kiosk-time-row strong {
     font-size:
       clamp(
-        1.2rem,
-        min(2cqw, 3.6cqh),
-        2.35rem
+        1.45rem,
+        min(3cqw, 5.4cqh),
+        3.5rem
       );
 
-    line-height: 1.05;
+    line-height: 1;
 
-    @apply mt-1 block truncate font-extrabold text-white;
+    margin-top:
+      clamp(
+        .15rem,
+        min(.25cqw, .45cqh),
+        .3rem
+      );
+
+    @apply block truncate font-extrabold tracking-[-0.03em] text-white;
   }
 
   .kiosk-time-row small {
     font-size:
       clamp(
-        .72rem,
-        min(.9cqw, 1.62cqh),
-        1.05rem
+        .68rem,
+        min(.8cqw, 1.44cqh),
+        1rem
       );
 
-    @apply mt-1 block truncate text-slate-500;
+    margin-top:
+      clamp(
+        .1rem,
+        min(.18cqw, .32cqh),
+        .25rem
+      );
+
+    @apply block truncate text-slate-500;
   }
 
   .kiosk-note {
     font-size:
       clamp(
-        .85rem,
-        min(1.25cqw, 2.25cqh),
-        1.45rem
+        .8rem,
+        min(1.1cqw, 1.98cqh),
+        1.3rem
       );
 
     margin:
       0
       0
-      clamp(.45rem, min(.75cqw, 1.35cqh), .85rem);
+      clamp(.25rem, min(.4cqw, .72cqh), .5rem);
 
     padding-left:
       clamp(
-        .25rem,
-        min(.45cqw, .81cqh),
-        .55rem
+        .15rem,
+        min(.3cqw, .54cqh),
+        .4rem
       );
 
     @apply min-w-0 truncate font-medium leading-snug text-slate-300;
