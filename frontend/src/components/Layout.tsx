@@ -1,4 +1,4 @@
-import { Activity, Database, List, Maximize2, Ruler } from 'lucide-react';
+import { Activity, Braces, Database, FlaskConical, List, Maximize2, Ruler } from 'lucide-react';
 import type { PropsWithChildren } from 'react';
 import { Link, NavLink, useLocation, type NavLinkRenderProps } from 'react-router-dom';
 import { cn } from '../lib/utils';
@@ -6,9 +6,11 @@ import { cn } from '../lib/utils';
 const navigation = [
   { to: '/', label: 'Activity', icon: Activity, end: true },
   { to: '/events', label: 'Events', icon: List, end: false },
+  { to: '/explore', label: 'Explore', icon: FlaskConical, end: false },
+  { to: '/analysis-functions', label: 'Functions', icon: Braces, end: false },
   { to: '/kiosk', label: 'Kiosk', icon: Maximize2, end: false },
   { to: '/event-types', label: 'Event types', icon: Database, end: false },
-  { to: '/units', label: 'Units', icon: Ruler, end: false }
+  { to: '/units', label: 'Units', icon: Ruler, end: false },
 ] as const;
 
 export function Layout({ children }: PropsWithChildren) {
@@ -16,7 +18,7 @@ export function Layout({ children }: PropsWithChildren) {
   const isKiosk = location.pathname === '/kiosk';
 
   return (
-    <div className="app-shell">
+    <div className={cn('app-shell', isKiosk && 'app-shell-kiosk')}>
       <header className="topbar">
         <Link to="/" className="brand">
           <span className="brand-mark"><Activity className="size-5" /></span>

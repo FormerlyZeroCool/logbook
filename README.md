@@ -19,9 +19,9 @@ logbook/
 
 | Component | Version |
 |---|---:|
-| Monorepo | 0.11.12 |
-| Backend | 0.11.0 |
-| Frontend | 0.13.7 |
+| Monorepo | 0.13.0
+| Backend | 0.12.0
+| Frontend | 0.15.0
 | Home Assistant integration | 0.1.8 |
 
 ## Features
@@ -149,3 +149,15 @@ python -m pytest home-assistant/tests
 ## Legacy YAML
 
 `home-assistant/legacy/logbook_core_v6.yaml` is retained only for existing automations and comparison during native-integration testing. Do not expose both the legacy YAML scripts and the native Logbook tools to the same Assist agent because duplicate actions reduce tool-selection reliability.
+
+<!-- analysis-runtime-pr1 -->
+## Analysis runtime and Explore
+
+The TypeScript packages are an npm workspace with one authoritative `@logbook/analysis-sdk` and a reusable `@logbook/analysis-editor`. The editor package owns Monaco, browser TypeScript workers, generated signatures, diagnostics, and editor styles; the application frontend consumes its public components. Explore runs saved code or visual pipelines in dedicated Web Workers with fresh QuickJS contexts, while the backend repeats the same deterministic fixture validation in `worker_threads` before a revision can be published.
+
+Run workspace checks from the repository root:
+
+```bash
+npm ci
+npm run check
+```

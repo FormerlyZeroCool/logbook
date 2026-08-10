@@ -482,6 +482,44 @@ paths:
           and duration details: null
         '400':
           description: Incompatible display unit
+  /analysis/query:
+    post: { summary: Query normalized analysis inputs }
+  /analysis/validate:
+    post: { summary: Validate an analysis program against mandatory fixtures }
+  /analysis/programs:
+    get: { summary: List analysis programs }
+    post: { summary: Create an analysis program }
+  /analysis/programs/{id}:
+    get: { summary: Read an analysis program and immutable revisions }
+    patch: { summary: Update analysis program metadata with optimistic concurrency }
+    delete: { summary: Delete an analysis program }
+  /analysis/programs/{id}/duplicate:
+    post: { summary: Duplicate an analysis program and pinned revision }
+  /analysis/programs/{id}/revisions:
+    post: { summary: Save and authoritatively validate an immutable program revision }
+  /analysis/programs/{id}/publish/{revisionId}:
+    post: { summary: Publish a passed immutable program revision }
+  /analysis/functions:
+    get: { summary: List reusable analysis functions }
+    post: { summary: Create a reusable analysis function }
+  /analysis/functions/{id}:
+    get: { summary: Read a reusable function and immutable revisions }
+    patch: { summary: Update user-owned reusable function metadata }
+    delete: { summary: Delete a user-owned reusable function }
+  /analysis/functions/{id}/duplicate:
+    post: { summary: Duplicate a reusable function and pinned revision }
+  /analysis/functions/{id}/revisions:
+    post: { summary: Save and authoritatively validate an immutable function revision }
+  /analysis/functions/{id}/publish/{revisionId}:
+    post: { summary: Publish a passed immutable function revision }
+  /explorations:
+    get: { summary: List Explore workspaces }
+    post: { summary: Create an Explore workspace }
+  /explorations/{id}:
+    get: { summary: Read an Explore workspace }
+    patch: { summary: Update an Explore workspace with optimistic concurrency }
+    delete: { summary: Delete an Explore workspace }
+
 components:
   securitySchemes:
     bearerAuth:

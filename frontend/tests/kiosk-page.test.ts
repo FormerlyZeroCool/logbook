@@ -52,6 +52,7 @@ test('kiosk is routed and available from the shared navigation', async (): Promi
   assert.match(layout, /to: '\/kiosk', label: 'Kiosk'/);
   assert.match(layout, /location\.pathname === '\/kiosk'/);
   assert.match(layout, /isKiosk && 'page-kiosk'/);
+  assert.match(layout, /isKiosk && 'app-shell-kiosk'/);
 });
 
 test('kiosk requests only the newest event and automatically advances pages', async (): Promise<void> => {
@@ -89,11 +90,36 @@ test('kiosk layout reserves six viewport-filling slots and adapts to fewer panel
   assert.match(styles, /\.kiosk-grid-count-1/);
   assert.match(styles, /\.kiosk-grid-count-4/);
   assert.match(styles, /@media \(orientation: portrait\)/);
-  assert.match(styles, /\.kiosk-panel-header h2 \{ font-size: clamp/);
-  assert.match(styles, /\.kiosk-value \{ font-size: clamp/);
-  assert.match(styles, /\.kiosk-time-rows/);
-  assert.match(styles, /\.kiosk-time-row strong \{ font-size: clamp/);
+  assert.match(styles, /\.app-shell-kiosk \{[^}]*position: fixed;[^}]*inset: 0/);
+  assert.match(styles, /\.kiosk-page \{[^}]*container-type: size/);
+  assert.match(styles, /min\(2\.35cqw, 4\.23cqh\)/);
+  assert.match(styles, /min\(2\.75cqw, 4\.95cqh\)/);
+  assert.match(styles, /min\(3cqw, 5\.4cqh\)/);
+  assert.match(styles, /flex: 1 1 auto/);
+  assert.match(styles, /flex: 1 1 0/);
+  assert.match(
+    styles,
+    /\.kiosk-panel-header h2\s*\{[\s\S]*?font-size:\s*clamp\(/,
+  );
+  assert.match(
+
+    styles,
+
+    /\.kiosk-value\s*\{[\s\S]*?font-size:\s*clamp\(/,
+
+  );assert.match(styles, /\.kiosk-time-rows/);
+  assert.match(
+    styles,
+    /\.kiosk-time-row strong\s*\{[\s\S]*?font-size:\s*clamp\(/,
+  );
   assert.match(styles, /\.kiosk-note \{[^}]*@apply min-w-0 truncate/);
   assert.doesNotMatch(styles, /-webkit-line-clamp/);
   assert.doesNotMatch(styles, /\.kiosk-details/);
+
+  const kioskStyles = styles.slice(styles.indexOf('.page-kiosk'));
+  assert.doesNotMatch(
+    kioskStyles,
+    /(?:font-size|padding|gap|margin|width|height):[^;}]*(?:\d(?:\.\d+)?)vw/,
+    'kiosk sizing should not depend on viewport width alone'
+  );
 });

@@ -1,12 +1,16 @@
 FROM node:24-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --no-fund
-COPY tsconfig.json tsconfig.app.json tsconfig.node.json vite.config.ts index.html ./
-COPY src ./src
-RUN npm run build
-
+COPY package.json package-lock.json ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
+COPY packages/analysis-sdk/package.json packages/analysis-sdk/package.json
+COPY packages/analysis-editor/package.json packages/analysis-editor/package.json
+RUN npm ci
+COPY packages/analysis-sdk packages/analysis-sdk
+COPY packages/analysis-editor packages/analysis-editor
+COPY frontend frontend
+RUN npm run build --workspace @logbook/analysis-sdk && npm run build --workspace @logbook/analysis-editor && npm run build --workspace ha-timeseries-logbook-frontend
 FROM nginx:1.29-alpine
-COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY --from=build /app/frontend/dist /usr/share/nginx/html
+COPY frontend/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 EXPOSE 8080

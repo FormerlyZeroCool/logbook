@@ -1,7 +1,8 @@
 {
-  "monorepo": "0.12.0",
-  "backend": "0.11.0",
-  "frontend": "0.14.0",
+  "monorepo": "0.13.0",
+  "backend": "0.12.0",
+  "frontend": "0.15.0",
+  "analysis_sdk": "1.1.0",
   "home_assistant_integration": "0.1.8",
   "legacy_home_assistant_yaml": "v6"
 }
