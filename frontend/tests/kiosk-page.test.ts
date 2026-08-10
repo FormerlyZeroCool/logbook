@@ -90,9 +90,9 @@ test('kiosk layout reserves six viewport-filling slots and adapts to fewer panel
   assert.match(styles, /\.kiosk-grid-count-1/);
   assert.match(styles, /\.kiosk-grid-count-4/);
   assert.match(styles, /@media \(orientation: portrait\)/);
-  assert.match(styles, /\.app-shell-kiosk \{[^}]*height: 100dvh/);
-  assert.match(styles, /@media \(max-height: 800px\)/);
-  assert.match(styles, /@media \(max-height: 650px\)/);
+  assert.match(styles, /\.app-shell-kiosk \{[^}]*position: fixed;[^}]*inset: 0/);
+  assert.match(styles, /\.kiosk-page \{[^}]*container-type: size/);
+  assert.match(styles, /min\(2\.8cqw, 5\.04cqh\)/);
   assert.match(styles, /\.kiosk-panel-header h2 \{ font-size: clamp/);
   assert.match(styles, /\.kiosk-value \{ font-size: clamp/);
   assert.match(styles, /\.kiosk-time-rows/);
