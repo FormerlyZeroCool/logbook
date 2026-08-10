@@ -52,6 +52,7 @@ test('kiosk is routed and available from the shared navigation', async (): Promi
   assert.match(layout, /to: '\/kiosk', label: 'Kiosk'/);
   assert.match(layout, /location\.pathname === '\/kiosk'/);
   assert.match(layout, /isKiosk && 'page-kiosk'/);
+  assert.match(layout, /isKiosk && 'app-shell-kiosk'/);
 });
 
 test('kiosk requests only the newest event and automatically advances pages', async (): Promise<void> => {
@@ -89,6 +90,9 @@ test('kiosk layout reserves six viewport-filling slots and adapts to fewer panel
   assert.match(styles, /\.kiosk-grid-count-1/);
   assert.match(styles, /\.kiosk-grid-count-4/);
   assert.match(styles, /@media \(orientation: portrait\)/);
+  assert.match(styles, /\.app-shell-kiosk \{[^}]*height: 100dvh/);
+  assert.match(styles, /@media \(max-height: 800px\)/);
+  assert.match(styles, /@media \(max-height: 650px\)/);
   assert.match(styles, /\.kiosk-panel-header h2 \{ font-size: clamp/);
   assert.match(styles, /\.kiosk-value \{ font-size: clamp/);
   assert.match(styles, /\.kiosk-time-rows/);
@@ -96,4 +100,11 @@ test('kiosk layout reserves six viewport-filling slots and adapts to fewer panel
   assert.match(styles, /\.kiosk-note \{[^}]*@apply min-w-0 truncate/);
   assert.doesNotMatch(styles, /-webkit-line-clamp/);
   assert.doesNotMatch(styles, /\.kiosk-details/);
+
+  const kioskStyles = styles.slice(styles.indexOf('.page-kiosk'));
+  assert.doesNotMatch(
+    kioskStyles,
+    /(?:font-size|padding|gap|margin|width|height):[^;}]*(?:\d(?:\.\d+)?)vw/,
+    'kiosk sizing should not depend on viewport width alone'
+  );
 });

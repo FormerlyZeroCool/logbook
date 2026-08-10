@@ -18,7 +18,7 @@ export function Layout({ children }: PropsWithChildren) {
   const isKiosk = location.pathname === '/kiosk';
 
   return (
-    <div className="app-shell">
+    <div className={cn('app-shell', isKiosk && 'app-shell-kiosk')}>
       <header className="topbar">
         <Link to="/" className="brand">
           <span className="brand-mark"><Activity className="size-5" /></span>
